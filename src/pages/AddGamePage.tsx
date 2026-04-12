@@ -33,6 +33,16 @@ function linesToList(text: string): string[] {
     .filter(Boolean)
 }
 
+function looksLikeHttpImageUrl(raw: string | null): boolean {
+  if (!raw || raw.length > 2048) return false
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 type IgdbGenreRow = {
   title: string
   externalId: string
@@ -82,6 +92,7 @@ export function AddGamePage() {
   const [hltbError, setHltbError] = useState<string | null>(null)
   const [reviewPlatforms, setReviewPlatforms] = useState<string[]>([])
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null)
+  const [coverPreviewFailed, setCoverPreviewFailed] = useState(false)
   const [hltbMainHours, setHltbMainHours] = useState<number | null>(null)
   const [hltbExtrasHours, setHltbExtrasHours] = useState<number | null>(null)
   const [hltbCompletionistHours, setHltbCompletionistHours] = useState<number | null>(null)
@@ -153,6 +164,10 @@ export function AddGamePage() {
     return () => window.clearTimeout(t)
   }, [hltbQuery])
 
+  useEffect(() => {
+    setCoverPreviewFailed(false)
+  }, [coverImageUrl])
+
   const toggleGenre = useCallback((g: string) => {
     setSelectedGenres((prev) => {
       const next = new Set(prev)
@@ -196,13 +211,14 @@ export function AddGamePage() {
 
   const extSearchQ = useCallback(() => (extGenreQuery.trim() || name.trim()), [extGenreQuery, name])
 
-  const searchIgdbGenres = useCallback(async () => {
-    const q = extSearchQ()
+  const runIgdbSearch = useCallback(async (explicitQuery: string) => {
+    const q = explicitQuery.trim()
     if (q.length < 2) {
-      setIgdbErr('Type at least 2 characters (or set the game name above).')
+      setIgdbErr('Need at least 2 characters for IGDB search.')
       setIgdbMatches([])
       return
     }
+    setExtGenreQuery(q)
     setIgdbBusy(true)
     setIgdbErr(null)
     try {
@@ -216,7 +232,11 @@ export function AddGamePage() {
     } finally {
       setIgdbBusy(false)
     }
-  }, [extSearchQ])
+  }, [])
+
+  const searchIgdbGenres = useCallback(() => {
+    void runIgdbSearch(extSearchQ())
+  }, [extSearchQ, runIgdbSearch])
 
   const addTagDraft = useCallback(() => {
     const v = tagDraft.trim()
@@ -246,23 +266,25 @@ export function AddGamePage() {
         gameplayCompletionist?: number
         error?: string
       }
-      if (!res.ok) return
-      if (typeof json.description === 'string') {
-        const t = json.description.trim()
-        if (t) setSubtitle(t.slice(0, 500))
+      if (res.ok) {
+        if (typeof json.description === 'string') {
+          const t = json.description.trim()
+          if (t) setSubtitle(t.slice(0, 500))
+        }
+        if (Array.isArray(json.platforms) && json.platforms.length) {
+          setReviewPlatforms([...json.platforms])
+        }
+        if (json.gameplayMain != null) setHltbMainHours(json.gameplayMain)
+        if (json.gameplayMainExtra != null) setHltbExtrasHours(json.gameplayMainExtra)
+        if (json.gameplayCompletionist != null) setHltbCompletionistHours(json.gameplayCompletionist)
       }
-      if (Array.isArray(json.platforms) && json.platforms.length) {
-        setReviewPlatforms([...json.platforms])
-      }
-      if (json.gameplayMain != null) setHltbMainHours(json.gameplayMain)
-      if (json.gameplayMainExtra != null) setHltbExtrasHours(json.gameplayMainExtra)
-      if (json.gameplayCompletionist != null) setHltbCompletionistHours(json.gameplayCompletionist)
     } catch {
       /* subtitle / detail optional */
     } finally {
       setHltbDetailBusy(false)
     }
-  }, [])
+    await runIgdbSearch(hit.name)
+  }, [runIgdbSearch])
 
   const submit = useCallback(async () => {
     setSubmitStatus(null)
@@ -417,6 +439,23 @@ export function AddGamePage() {
             className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
             placeholder="https://…"
           />
+          {looksLikeHttpImageUrl(coverImageUrl) && coverImageUrl ? (
+            <div className="mt-3">
+              {!coverPreviewFailed ? (
+                <img
+                  key={coverImageUrl}
+                  src={coverImageUrl}
+                  alt="Cover preview"
+                  className="max-h-64 max-w-[min(100%,20rem)] rounded-lg border border-zinc-600 object-contain shadow-md"
+                  onError={() => setCoverPreviewFailed(true)}
+                />
+              ) : (
+                <p className="text-xs text-rose-300">Could not load an image from this URL (blocked, wrong link, or CORS).</p>
+              )}
+            </div>
+          ) : coverImageUrl?.trim() ? (
+            <p className="mt-2 text-xs text-zinc-500">Enter a full <span className="font-mono">https://</span> URL to see a preview.</p>
+          ) : null}
           <label className="mt-4 block text-sm font-medium text-zinc-300">
             Platforms <span className="font-normal text-zinc-500">(one per line; saved on the review)</span>
           </label>
@@ -471,7 +510,7 @@ export function AddGamePage() {
             <a className="text-emerald-400/90 underline-offset-2 hover:underline" href="https://api-docs.igdb.com/" target="_blank" rel="noreferrer">
               IGDB
             </a>{' '}
-            (Twitch <span className="font-mono">IGDB_CLIENT_ID</span> + <span className="font-mono">IGDB_CLIENT_SECRET</span> on the server) and add only the genre labels you want.
+            (Twitch <span className="font-mono">IGDB_CLIENT_ID</span> + <span className="font-mono">IGDB_CLIENT_SECRET</span> on the server). Choosing a HowLongToBeat result runs IGDB automatically for that title; use Search below to try another query.
           </p>
 
           <div className="rounded-xl border border-zinc-700/80 bg-zinc-950/50 p-4">
@@ -498,7 +537,7 @@ export function AddGamePage() {
               <button
                 type="button"
                 disabled={igdbBusy}
-                onClick={() => void searchIgdbGenres()}
+                onClick={searchIgdbGenres}
                 className="rounded-lg bg-violet-600/90 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
               >
                 {igdbBusy ? 'Searching…' : 'Search IGDB'}
