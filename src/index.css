@@ -1,0 +1,79 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-anthropic-display: 'Fraunces', ui-serif, Georgia, serif;
+  --font-anthropic-body: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-review: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-bento: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand: #8251ee;
+  --color-brand-hover: #9366f5;
+  --color-neutral-bg1: hsl(240 6% 10%);
+  --color-neutral-bg2: hsl(240 5% 12%);
+  --color-neutral-bg3: hsl(240 5% 14%);
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-border-subtle: hsl(0 0% 100% / 0.08);
+  --color-border-default: hsl(0 0% 100% / 0.12);
+  --color-status-success: #10b981;
+  --color-status-warning: #f59e0b;
+  --color-status-error: #ef4444;
+  --color-status-info: #3b82f6;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  *:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .grain-bg {
+    position: relative;
+  }
+
+  .grain-bg::after {
+    content: '';
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    opacity: 0.12;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .motion-rise {
+    animation: motion-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--motion-rise-delay, 0ms);
+  }
+
+  @keyframes motion-rise {
+    from {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .motion-rise {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
