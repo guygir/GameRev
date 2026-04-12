@@ -221,24 +221,33 @@ export function GameReviewPage() {
           { label: vm.name },
         ]}
       />
-      <div className="relative mx-auto max-w-6xl px-4 pb-4 pt-2 md:px-8">
+      <div
+        className={
+          mode === 'dark'
+            ? 'relative mx-auto max-w-6xl px-4 pb-4 pt-2 text-[#f4e9d8]/90 md:px-8'
+            : 'relative mx-auto max-w-6xl px-4 pb-4 pt-2 text-zinc-700 md:px-8'
+        }
+      >
         <Link
           to={`/addgame?edit=${encodeURIComponent(slug)}`}
-          className="text-sm font-semibold text-emerald-300/90 underline-offset-4 hover:underline"
+          className={
+            mode === 'dark'
+              ? 'text-sm font-semibold text-[#e8b86d] underline-offset-4 hover:text-[#ffe7c2] hover:underline'
+              : 'text-sm font-semibold text-brand underline-offset-4 hover:text-brand-hover hover:underline'
+          }
         >
           Edit in Add game
         </Link>
-        <span className="mx-2 text-zinc-600">·</span>
-        <span className="text-xs text-zinc-500">
-          Same as choosing this title in the load dropdown on <span className="font-mono">/addgame</span>. JSON:{' '}
-          <span className="font-mono">/api/review?slug={slug}</span>
-        </span>
       </div>
       <CommentsSection gameId={gameId} mode={mode} initialComments={comments} />
       <div className="pointer-events-none fixed bottom-24 left-1/2 z-[60] w-[min(92vw,360px)] -translate-x-1/2 text-center">
         <Link
           to="/"
-          className="pointer-events-auto text-xs font-semibold text-zinc-500 underline-offset-4 hover:underline"
+          className={
+            mode === 'dark'
+              ? 'pointer-events-auto text-xs font-semibold text-[#f4e9d8]/55 underline-offset-4 hover:text-[#ffe7c2] hover:underline'
+              : 'pointer-events-auto text-xs font-semibold text-zinc-500 underline-offset-4 hover:text-zinc-800 hover:underline'
+          }
         >
           Back to reviews
         </Link>

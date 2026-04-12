@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
+import { MockNav } from '../components/MockNav'
 import { statAxes, statAxisTooltips, type GameStats } from '../review/gameStats'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference } from '../lib/reviewModePreference'
@@ -546,8 +547,13 @@ export function AddGamePage() {
     <div className="min-h-[100dvh] bg-zinc-950 px-4 py-14 text-zinc-100">
       <div className="mx-auto max-w-3xl space-y-10">
         <header>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">GameRev</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">{loadReviewSlug ? 'Edit review' : 'Add a review'}</h1>
+          <div className="mb-8 border-b border-zinc-800 pb-5">
+            <MockNav
+              crumbs={[{ label: 'Home', to: '/' }, { label: 'Add game' }]}
+              className="text-sm text-zinc-400"
+            />
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight">{loadReviewSlug ? 'Edit review' : 'Add a review'}</h1>
           <p className="mt-3 text-sm leading-relaxed text-zinc-400">
             Use <span className="font-semibold text-zinc-300">Load review to edit</span> below to pick an existing post, then{' '}
             <span className="font-semibold text-zinc-300">Save changes</span>. Leave it on “New review” to publish a new one.

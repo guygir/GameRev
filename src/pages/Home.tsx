@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import clsx from 'clsx'
 import { MockNav } from '../components/MockNav'
+import { ReviewModeToggle } from '../components/ReviewModeToggle'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
-import { readReviewModePreference } from '../lib/reviewModePreference'
+import { readReviewModePreference, writeReviewModePreference } from '../lib/reviewModePreference'
+import { getReviewTheme, type ReviewMode } from '../review/getReviewTheme'
 
 type GameCard = {
   slug: string
@@ -49,6 +52,8 @@ export function Home() {
   const sb = useMemo(() => getSupabaseBrowser(), [])
   const [games, setGames] = useState<GameCard[]>([])
   const [loadErr, setLoadErr] = useState<string | null>(null)
+  const [homeMode, setHomeMode] = useState<ReviewMode>(() => readReviewModePreference())
+  const homeTheme = useMemo(() => getReviewTheme(homeMode), [homeMode])
 
   useEffect(() => {
     if (!sb) return
@@ -70,50 +75,126 @@ export function Home() {
     }
   }, [sb])
 
+  const onHomeModeChange = (next: ReviewMode) => {
+    writeReviewModePreference(next)
+    setHomeMode(next)
+  }
+
+  const isLight = homeMode === 'light'
+
   return (
-    <div className="min-h-[100dvh] bg-zinc-950 px-4 py-14 text-zinc-100">
+    <div
+      className={clsx(
+        'min-h-[100dvh] px-4 py-14',
+        isLight ? clsx(homeTheme.shell, homeTheme.fontBody) : 'bg-zinc-950 text-zinc-100',
+      )}
+    >
       <div className="mx-auto max-w-3xl">
-        <div className="mb-8 border-b border-zinc-800 pb-5">
-          <MockNav crumbs={[{ label: 'Home' }]} className="text-sm text-zinc-400" homeLabel="GameRev" homeTo="/" />
+        <div
+          className={clsx(
+            'mb-8 flex flex-wrap items-center justify-between gap-3 border-b pb-5',
+            isLight ? 'border-zinc-200' : 'border-zinc-800',
+          )}
+        >
+          <MockNav
+            crumbs={[{ label: 'Home' }]}
+            className={clsx('text-sm', isLight ? homeTheme.navMuted : 'text-zinc-400')}
+            homeLabel="GameRev"
+            homeTo="/"
+          />
+          <ReviewModeToggle
+            mode={homeMode}
+            onChange={onHomeModeChange}
+            surface={isLight ? 'review' : 'home'}
+          />
         </div>
-        <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">GameRev</h1>
-        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-400">
+        <h1 className={clsx('text-3xl font-semibold tracking-tight md:text-4xl', isLight ? homeTheme.title : 'text-white')}>
+          GameRev
+        </h1>
+        <p className={clsx('mt-4 max-w-2xl text-sm leading-relaxed', isLight ? homeTheme.subtitle : 'text-zinc-400')}>
           Long-form reviews with a Pack 1 layout (Fraunces + DM Sans), radar stats, and HowLongToBeat callouts.
         </p>
 
-        <p className="mt-10 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Reviews</p>
-        <p className="mt-1 text-xs text-zinc-600">Newest first.</p>
+        <p
+          className={clsx(
+            'mt-10 text-xs font-semibold uppercase tracking-[0.2em]',
+            isLight ? 'text-zinc-500' : 'text-zinc-500',
+          )}
+        >
+          Reviews
+        </p>
+        <p className={clsx('mt-1 text-xs', isLight ? 'text-zinc-500' : 'text-zinc-600')}>Newest first.</p>
         {!sb ? (
-          <p className="mt-4 text-sm text-zinc-500">
+          <p className={clsx('mt-4 text-sm', isLight ? 'text-zinc-600' : 'text-zinc-500')}>
             Set <span className="font-mono">VITE_SUPABASE_URL</span> and{' '}
             <span className="font-mono">VITE_SUPABASE_ANON_KEY</span> to list reviews from Supabase.
           </p>
         ) : loadErr ? (
-          <p className="mt-4 text-sm text-rose-300">{loadErr}</p>
+          <p className="mt-4 text-sm text-rose-600">{loadErr}</p>
         ) : games.length === 0 ? (
-          <p className="mt-4 text-sm text-zinc-500">No reviews yet. Add one with “Add a game”.</p>
+          <p className={clsx('mt-4 text-sm', isLight ? 'text-zinc-600' : 'text-zinc-500')}>
+            No reviews yet. Add one with “Add a game”.
+          </p>
         ) : (
           <ul className="mt-6 space-y-4">
             {games.map((g) => (
               <li key={g.slug}>
                 <Link
-                  to={`/g/${g.slug}?mode=${readReviewModePreference()}`}
-                  className="group block overflow-hidden rounded-2xl border border-emerald-500/25 bg-emerald-950/35 transition hover:border-emerald-400/50 hover:bg-emerald-950/50"
+                  to={`/g/${g.slug}?mode=${homeMode}`}
+                  className={clsx(
+                    'group block overflow-hidden rounded-2xl border transition',
+                    isLight
+                      ? 'border-zinc-200 bg-white shadow-sm hover:border-brand/30 hover:shadow-md'
+                      : 'border-emerald-500/25 bg-emerald-950/35 hover:border-emerald-400/50 hover:bg-emerald-950/50',
+                  )}
                 >
                   <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-stretch">
-                    <div className="relative aspect-[4/5] w-full shrink-0 overflow-hidden rounded-lg border border-emerald-500/20 bg-zinc-900 sm:w-36">
+                    <div
+                      className={clsx(
+                        'relative aspect-[4/5] w-full shrink-0 overflow-hidden rounded-lg border sm:w-36',
+                        isLight ? 'border-zinc-200 bg-zinc-100' : 'border-emerald-500/20 bg-zinc-900',
+                      )}
+                    >
                       {g.cover_image_url ? (
                         <img src={g.cover_image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
                       ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-zinc-500">No art</div>
+                        <div
+                          className={clsx(
+                            'flex h-full items-center justify-center text-xs',
+                            isLight ? 'text-zinc-400' : 'text-zinc-500',
+                          )}
+                        >
+                          No art
+                        </div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h2 className="text-lg font-semibold text-white group-hover:text-emerald-100">{g.name}</h2>
+                      <h2
+                        className={clsx(
+                          'text-lg font-semibold',
+                          isLight ? 'text-zinc-950 group-hover:text-brand' : 'text-white group-hover:text-emerald-100',
+                        )}
+                      >
+                        {g.name}
+                      </h2>
                       {g.subtitle ? (
-                        <p className="mt-2 text-sm leading-relaxed text-emerald-100/75">{g.subtitle}</p>
+                        <p
+                          className={clsx(
+                            'mt-2 text-sm leading-relaxed',
+                            isLight ? 'text-zinc-600' : 'text-emerald-100/75',
+                          )}
+                        >
+                          {g.subtitle}
+                        </p>
                       ) : null}
-                      <span className="mt-4 inline-flex text-sm font-semibold text-emerald-300/90">Read review →</span>
+                      <span
+                        className={clsx(
+                          'mt-4 inline-flex text-sm font-semibold',
+                          isLight ? 'text-brand group-hover:underline' : 'text-emerald-300/90',
+                        )}
+                      >
+                        Read review →
+                      </span>
                     </div>
                   </div>
                 </Link>
@@ -124,35 +205,78 @@ export function Home() {
 
         <div className="mt-10 flex flex-wrap gap-3">
           <Link
-            to={`/review?mode=${readReviewModePreference()}`}
-            className="inline-flex rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-300"
+            to={`/review?mode=${homeMode}`}
+            className={clsx(
+              'inline-flex rounded-lg px-4 py-2 text-sm font-semibold transition',
+              isLight
+                ? 'bg-brand text-white hover:bg-brand-hover'
+                : 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300',
+            )}
           >
             Sample review (Signalis)
           </Link>
           <Link
             to="/addgame"
-            className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm font-semibold text-zinc-100 hover:border-emerald-500/40"
+            className={clsx(
+              'inline-flex rounded-lg border px-4 py-2 text-sm font-semibold transition',
+              isLight
+                ? 'border-zinc-300 bg-white text-zinc-800 hover:border-brand/40'
+                : 'border-zinc-700 bg-zinc-900/60 text-zinc-100 hover:border-emerald-500/40',
+            )}
           >
             Add a game
           </Link>
         </div>
 
-        <p className="mt-14 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Archived mocks</p>
+        <p
+          className={clsx(
+            'mt-14 text-xs font-semibold uppercase tracking-[0.2em]',
+            isLight ? 'text-zinc-500' : 'text-zinc-500',
+          )}
+        >
+          Archived mocks
+        </p>
         <ul className="mt-4 space-y-4">
           {mockVariants.map((v) => (
             <li key={v.to}>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 transition hover:border-amber-500/50 hover:bg-zinc-900">
+              <div
+                className={clsx(
+                  'rounded-2xl border transition',
+                  isLight
+                    ? 'border-zinc-200 bg-white shadow-sm hover:border-amber-400/50'
+                    : 'border-zinc-800 bg-zinc-900/60 hover:border-amber-500/50 hover:bg-zinc-900',
+                )}
+              >
                 <Link to={v.to} className="group block p-5">
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <h2 className="text-lg font-semibold text-white group-hover:text-amber-200">{v.title}</h2>
-                      <p className="mt-2 text-sm leading-relaxed text-zinc-400">{v.blurb}</p>
+                      <h2
+                        className={clsx(
+                          'text-lg font-semibold',
+                          isLight ? 'text-zinc-950 group-hover:text-amber-800' : 'text-white group-hover:text-amber-200',
+                        )}
+                      >
+                        {v.title}
+                      </h2>
+                      <p className={clsx('mt-2 text-sm leading-relaxed', isLight ? 'text-zinc-600' : 'text-zinc-400')}>
+                        {v.blurb}
+                      </p>
                     </div>
-                    <span className="shrink-0 text-sm font-medium text-amber-400/90 md:pt-1">Open mock</span>
+                    <span
+                      className={clsx(
+                        'shrink-0 text-sm font-medium md:pt-1',
+                        isLight ? 'text-amber-700' : 'text-amber-400/90',
+                      )}
+                    >
+                      Open mock
+                    </span>
                   </div>
                 </Link>
                 <a
-                  className="block px-5 pb-5 text-xs text-zinc-500 underline-offset-4 hover:text-zinc-300 hover:underline"
+                  className={clsx(
+                    'block px-5 pb-5 text-xs underline-offset-4 hover:underline',
+                    isLight ? 'text-zinc-500 hover:text-zinc-800' : 'text-zinc-500 hover:text-zinc-300',
+                  )}
                   href={v.hrefSkill}
                   target="_blank"
                   rel="noreferrer"

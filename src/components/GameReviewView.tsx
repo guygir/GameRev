@@ -124,20 +124,44 @@ export function GameReviewView({
               >
                 {vm.subtitle}
               </p>
-              {vm.releaseLabel ? (
+              {vm.releaseLabel || vm.publishedAtLabel ? (
                 <p
-                  className={clsx('motion-rise mt-2 text-sm', theme.fontBody, theme.navMuted)}
+                  className={clsx(
+                    'motion-rise mt-2 text-sm leading-relaxed',
+                    theme.fontBody,
+                    mode === 'light' ? 'text-zinc-600' : 'text-[#f4e9d8]/80',
+                  )}
                   style={{ ['--motion-rise-delay' as string]: '240ms' }}
                 >
-                  Released {vm.releaseLabel}
-                </p>
-              ) : null}
-              {vm.publishedAtLabel ? (
-                <p
-                  className={clsx('motion-rise mt-1.5 text-sm', theme.fontBody, theme.navMuted)}
-                  style={{ ['--motion-rise-delay' as string]: '280ms' }}
-                >
-                  Review published {vm.publishedAtLabel}
+                  {vm.releaseLabel ? (
+                    <>
+                      <span
+                        className={
+                          mode === 'light' ? 'font-semibold text-zinc-800' : 'font-semibold text-[#fff4e4]'
+                        }
+                      >
+                        Released
+                      </span>{' '}
+                      {vm.releaseLabel}
+                    </>
+                  ) : null}
+                  {vm.releaseLabel && vm.publishedAtLabel ? (
+                    <span className="mx-2 inline-block opacity-45" aria-hidden>
+                      ·
+                    </span>
+                  ) : null}
+                  {vm.publishedAtLabel ? (
+                    <>
+                      <span
+                        className={
+                          mode === 'light' ? 'font-semibold text-zinc-800' : 'font-semibold text-[#fff4e4]'
+                        }
+                      >
+                        Review published
+                      </span>{' '}
+                      {vm.publishedAtLabel}
+                    </>
+                  ) : null}
                 </p>
               ) : null}
             </div>
