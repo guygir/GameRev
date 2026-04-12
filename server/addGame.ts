@@ -62,6 +62,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   const stats = parseStats(b.stats)
   if (!stats) return { ok: false, status: 400, error: 'Invalid stats (need 0–100 per axis)' }
 
+  const platforms = normalizeStringList(b.platforms, 24, 48)
   const genres = normalizeStringList(b.genres, 24, 80)
   const tags = normalizeStringList(b.tags, 40, 80)
   const pros = normalizeStringList(b.pros, 40, 600)
@@ -106,6 +107,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
       name,
       subtitle,
       cover_image_url: coverImageUrl,
+      platforms,
       hltb_main_hours: hltbMainHours,
       hltb_extras_hours: hltbExtrasHours,
       hltb_completionist_hours: hltbCompletionistHours,

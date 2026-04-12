@@ -6,6 +6,8 @@ export { statAxes, statAxisTooltips } from '../review/gameStats'
 export const mockGame = {
   name: 'Signalis',
   subtitle: 'A survival horror love letter to late PS1 dread',
+  coverImageUrl: 'https://howlongtobeat.com/games/57149_Signalis.jpg',
+  platforms: ['Nintendo Switch', 'PC', 'PlayStation 4', 'Xbox One'] as const,
   hltbMain: '8h',
   hltbExtras: '11h',
   hltbCompletionist: '13h',

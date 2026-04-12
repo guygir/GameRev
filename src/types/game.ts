@@ -13,6 +13,7 @@ export type GameRow = {
   name: string
   subtitle: string
   cover_image_url: string | null
+  platforms: string[]
   hltb_main_hours: number | null
   hltb_extras_hours: number | null
   hltb_completionist_hours: number | null

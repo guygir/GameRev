@@ -21,6 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       id: r.id,
       name: r.name,
       imageUrl: r.imageUrl,
+      platforms: r.platforms ?? [],
       gameplayMain: r.gameplayMain,
       gameplayMainExtra: r.gameplayMainExtra,
       gameplayCompletionist: r.gameplayCompletionist,

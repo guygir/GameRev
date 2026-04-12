@@ -14,6 +14,7 @@ type GameJoinRow = {
   name: string
   subtitle: string
   cover_image_url: string | null
+  platforms: string[] | null
   hltb_main_hours: number | null
   hltb_extras_hours: number | null
   hltb_completionist_hours: number | null
@@ -69,6 +70,7 @@ export function GameReviewPage() {
           name,
           subtitle,
           cover_image_url,
+          platforms,
           hltb_main_hours,
           hltb_extras_hours,
           hltb_completionist_hours,
@@ -113,6 +115,7 @@ export function GameReviewPage() {
         name: row.name,
         subtitle: row.subtitle,
         coverImageUrl: row.cover_image_url,
+        platforms: Array.isArray(row.platforms) ? row.platforms : [],
         hltbMain: formatHltbHours(row.hltb_main_hours),
         hltbExtras: formatHltbHours(row.hltb_extras_hours),
         hltbCompletionist: formatHltbHours(row.hltb_completionist_hours),

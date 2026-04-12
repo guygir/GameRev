@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
 import { HowLongToBeatService } from '@micamerzeau/howlongtobeat'
 import { addGameFromBody } from './addGame'
+import { fetchIgdbGenreMatches } from './igdbGenres'
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -55,12 +56,42 @@ function installApiRoutes(
           id: r.id,
           name: r.name,
           imageUrl: r.imageUrl,
+          platforms: r.platforms ?? [],
           gameplayMain: r.gameplayMain,
           gameplayMainExtra: r.gameplayMainExtra,
           gameplayCompletionist: r.gameplayCompletionist,
           similarity: r.similarity,
         }))
         sendJson(res, 200, { results: trimmed })
+        return
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/hltb-detail') {
+        const id = (url.searchParams.get('id') ?? '').trim()
+        if (!id) {
+          sendJson(res, 400, { error: 'Missing id' })
+          return
+        }
+        const entry = await hltb.detail(id)
+        sendJson(res, 200, {
+          id: entry.id,
+          name: entry.name,
+          description: entry.description,
+          platforms: entry.platforms,
+          imageUrl: entry.imageUrl,
+          gameplayMain: entry.gameplayMain,
+          gameplayMainExtra: entry.gameplayMainExtra,
+          gameplayCompletionist: entry.gameplayCompletionist,
+        })
+        return
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/igdb-genres') {
+        const q = (url.searchParams.get('q') ?? '').trim()
+        const clientId = env.IGDB_CLIENT_ID ?? ''
+        const clientSecret = env.IGDB_CLIENT_SECRET ?? ''
+        const matches = await fetchIgdbGenreMatches(q, clientId, clientSecret)
+        sendJson(res, 200, { matches })
         return
       }
 
@@ -90,7 +121,8 @@ function installApiRoutes(
       sendJson(res, 404, { error: 'Not found' })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Server error'
-      sendJson(res, 500, { error: message })
+      const status = /not configured/i.test(message) ? 503 : 500
+      sendJson(res, status, { error: message })
     }
   })
 }

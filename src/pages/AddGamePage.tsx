@@ -8,6 +8,7 @@ type HltbHit = {
   id: string
   name: string
   imageUrl: string
+  platforms?: string[]
   gameplayMain?: number
   gameplayMainExtra?: number
   gameplayCompletionist?: number
@@ -30,6 +31,12 @@ function linesToList(text: string): string[] {
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
+}
+
+type IgdbGenreRow = {
+  title: string
+  externalId: string
+  genres: string[]
 }
 
 function ChipToggle({
@@ -71,7 +78,9 @@ export function AddGamePage() {
   const [hltbQuery, setHltbQuery] = useState('')
   const [hltbHits, setHltbHits] = useState<HltbHit[]>([])
   const [hltbBusy, setHltbBusy] = useState(false)
+  const [hltbDetailBusy, setHltbDetailBusy] = useState(false)
   const [hltbError, setHltbError] = useState<string | null>(null)
+  const [reviewPlatforms, setReviewPlatforms] = useState<string[]>([])
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null)
   const [hltbMainHours, setHltbMainHours] = useState<number | null>(null)
   const [hltbExtrasHours, setHltbExtrasHours] = useState<number | null>(null)
@@ -79,6 +88,10 @@ export function AddGamePage() {
 
   const [selectedGenres, setSelectedGenres] = useState<Set<string>>(new Set())
   const [genreDraft, setGenreDraft] = useState('')
+  const [extGenreQuery, setExtGenreQuery] = useState('')
+  const [igdbMatches, setIgdbMatches] = useState<IgdbGenreRow[]>([])
+  const [igdbBusy, setIgdbBusy] = useState(false)
+  const [igdbErr, setIgdbErr] = useState<string | null>(null)
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [tagDraft, setTagDraft] = useState('')
 
@@ -166,6 +179,45 @@ export function AddGamePage() {
     setGenreDraft('')
   }, [genreDraft])
 
+  const addExternalGenres = useCallback((labels: string[]) => {
+    const cleaned = [...new Set(labels.map((s) => s.trim()).filter(Boolean))]
+    if (!cleaned.length) return
+    setPoolGenres((prev) => {
+      const next = new Set(prev)
+      for (const g of cleaned) next.add(g)
+      return [...next].sort((a, b) => a.localeCompare(b))
+    })
+    setSelectedGenres((prev) => {
+      const next = new Set(prev)
+      for (const g of cleaned) next.add(g)
+      return next
+    })
+  }, [])
+
+  const extSearchQ = useCallback(() => (extGenreQuery.trim() || name.trim()), [extGenreQuery, name])
+
+  const searchIgdbGenres = useCallback(async () => {
+    const q = extSearchQ()
+    if (q.length < 2) {
+      setIgdbErr('Type at least 2 characters (or set the game name above).')
+      setIgdbMatches([])
+      return
+    }
+    setIgdbBusy(true)
+    setIgdbErr(null)
+    try {
+      const res = await fetch(`/api/igdb-genres?q=${encodeURIComponent(q)}`)
+      const json = (await res.json()) as { matches?: IgdbGenreRow[]; error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'IGDB request failed')
+      setIgdbMatches(json.matches ?? [])
+    } catch (e) {
+      setIgdbErr(e instanceof Error ? e.message : 'IGDB failed')
+      setIgdbMatches([])
+    } finally {
+      setIgdbBusy(false)
+    }
+  }, [extSearchQ])
+
   const addTagDraft = useCallback(() => {
     const v = tagDraft.trim()
     if (!v) return
@@ -174,14 +226,42 @@ export function AddGamePage() {
     setTagDraft('')
   }, [tagDraft])
 
-  const applyHltb = useCallback((hit: HltbHit) => {
+  const applyHltb = useCallback(async (hit: HltbHit) => {
     setName(hit.name)
     setCoverImageUrl(hit.imageUrl)
+    setReviewPlatforms(hit.platforms?.length ? [...hit.platforms] : [])
     setHltbMainHours(hit.gameplayMain ?? null)
     setHltbExtrasHours(hit.gameplayMainExtra ?? null)
     setHltbCompletionistHours(hit.gameplayCompletionist ?? null)
     setHltbHits([])
     setHltbQuery(hit.name)
+    setHltbDetailBusy(true)
+    try {
+      const res = await fetch(`/api/hltb-detail?id=${encodeURIComponent(hit.id)}`)
+      const json = (await res.json()) as {
+        description?: string
+        platforms?: string[]
+        gameplayMain?: number
+        gameplayMainExtra?: number
+        gameplayCompletionist?: number
+        error?: string
+      }
+      if (!res.ok) return
+      if (typeof json.description === 'string') {
+        const t = json.description.trim()
+        if (t) setSubtitle(t.slice(0, 500))
+      }
+      if (Array.isArray(json.platforms) && json.platforms.length) {
+        setReviewPlatforms([...json.platforms])
+      }
+      if (json.gameplayMain != null) setHltbMainHours(json.gameplayMain)
+      if (json.gameplayMainExtra != null) setHltbExtrasHours(json.gameplayMainExtra)
+      if (json.gameplayCompletionist != null) setHltbCompletionistHours(json.gameplayCompletionist)
+    } catch {
+      /* subtitle / detail optional */
+    } finally {
+      setHltbDetailBusy(false)
+    }
   }, [])
 
   const submit = useCallback(async () => {
@@ -198,6 +278,7 @@ export function AddGamePage() {
         name: name.trim(),
         subtitle: subtitle.trim(),
         coverImageUrl,
+        platforms: reviewPlatforms,
         hltbMainHours,
         hltbExtrasHours,
         hltbCompletionistHours,
@@ -233,6 +314,7 @@ export function AddGamePage() {
     password,
     playIfLikedText,
     prosText,
+    reviewPlatforms,
     selectedGenres,
     selectedTags,
     stats,
@@ -259,9 +341,10 @@ export function AddGamePage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">GameRev</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Add a review</h1>
           <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-            HLTB lookup runs on the dev server (<span className="font-mono">/api/hltb-search</span>). Saving a review
-            requires <span className="font-mono">SUPABASE_SERVICE_ROLE_KEY</span> and{' '}
-            <span className="font-mono">ADD_GAME_PASSWORD</span> in your local env.
+            HLTB and IGDB genre lookups run on the server (<span className="font-mono">/api/*</span>). Saving a review needs{' '}
+            <span className="font-mono">SUPABASE_SERVICE_ROLE_KEY</span> and <span className="font-mono">ADD_GAME_PASSWORD</span>.
+            IGDB needs Twitch app <span className="font-mono">IGDB_CLIENT_ID</span> + <span className="font-mono">IGDB_CLIENT_SECRET</span>{' '}
+            (same on Vercel—never commit real values to git).
           </p>
           <Link to="/" className="mt-4 inline-block text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline">
             Back home
@@ -270,6 +353,18 @@ export function AddGamePage() {
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold text-white">HowLongToBeat</h2>
+          <p className="text-xs leading-relaxed text-zinc-500">
+            Search returns title, cover image URL, platform list, time buckets, and a <strong className="text-zinc-400">title match</strong>{' '}
+            score (see each row). Picking a row fills cover, platforms, and hours; it then loads the HLTB game page for
+            the <strong className="text-zinc-400">subtitle</strong> blurb and can refine hours/platforms.
+          </p>
+          <p className="text-xs leading-relaxed text-zinc-500">
+            <strong className="text-zinc-400">Title match</strong> is 0–100% from comparing your search text to the
+            game title (roughly: longer common spelling = higher). Example: search{' '}
+            <span className="font-mono">signalis</span> vs <span className="font-mono">Signalis</span> →{' '}
+            <strong className="text-zinc-400">100%</strong>. Search <span className="font-mono">nioh</span> vs{' '}
+            <span className="font-mono">Nioh: Complete Edition</span> → lower (more extra characters in the title).
+          </p>
           <label className="block text-sm font-medium text-zinc-300">Search title</label>
           <input
             value={hltbQuery}
@@ -278,6 +373,7 @@ export function AddGamePage() {
             placeholder="Type at least 2 characters…"
           />
           {hltbBusy ? <p className="text-xs text-zinc-500">Searching…</p> : null}
+          {hltbDetailBusy ? <p className="text-xs text-zinc-500">Loading game page for subtitle…</p> : null}
           {hltbError ? <p className="text-xs text-rose-300">{hltbError}</p> : null}
           {hltbHits.length ? (
             <ul className="mt-2 max-h-64 space-y-2 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-2">
@@ -285,11 +381,18 @@ export function AddGamePage() {
                 <li key={h.id}>
                   <button
                     type="button"
-                    onClick={() => applyHltb(h)}
-                    className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-zinc-800/80"
+                    onClick={() => void applyHltb(h)}
+                    disabled={hltbDetailBusy}
+                    className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-zinc-800/80 disabled:opacity-50"
                   >
-                    <img src={h.imageUrl} alt="" className="h-12 w-12 rounded object-cover" />
-                    <span className="font-medium text-zinc-100">{h.name}</span>
+                    <img src={h.imageUrl} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
+                    <span className="min-w-0 flex-1 font-medium text-zinc-100">{h.name}</span>
+                    <span
+                      className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-500"
+                      title="How close your search string is to this game title (not quality of the game)."
+                    >
+                      {Math.round((h.similarity ?? 0) * 100)}% match
+                    </span>
                   </button>
                 </li>
               ))}
@@ -306,6 +409,25 @@ export function AddGamePage() {
             className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
           />
           <label className="mt-4 block text-sm font-medium text-zinc-300">
+            Cover image URL <span className="font-normal text-zinc-500">(HLTB fills this; shown large on the review)</span>
+          </label>
+          <input
+            value={coverImageUrl ?? ''}
+            onChange={(e) => setCoverImageUrl(e.target.value.trim() ? e.target.value.trim() : null)}
+            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
+            placeholder="https://…"
+          />
+          <label className="mt-4 block text-sm font-medium text-zinc-300">
+            Platforms <span className="font-normal text-zinc-500">(one per line; saved on the review)</span>
+          </label>
+          <textarea
+            value={reviewPlatforms.join('\n')}
+            onChange={(e) => setReviewPlatforms(linesToList(e.target.value).slice(0, 24))}
+            rows={4}
+            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
+            placeholder={'PC\nPlayStation 4'}
+          />
+          <label className="mt-4 block text-sm font-medium text-zinc-300">
             Subtitle <span className="font-normal text-zinc-500">(one line under the title)</span>
           </label>
           <textarea
@@ -316,7 +438,8 @@ export function AddGamePage() {
             placeholder="e.g. A survival horror love letter to late PS1 dread"
           />
           <p className="text-xs text-zinc-500">
-            Cover + HLTB hours come from your HLTB pick above (you can still edit name after).
+            Cover URL, platforms, and hours come from search; picking a result can refine them and fills subtitle from
+            the HLTB game page when available.
           </p>
         </section>
 
@@ -343,9 +466,86 @@ export function AddGamePage() {
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold text-white">Genres</h2>
+          <p className="text-xs leading-relaxed text-zinc-500">
+            Pick chips below, type your own, or search{' '}
+            <a className="text-emerald-400/90 underline-offset-2 hover:underline" href="https://api-docs.igdb.com/" target="_blank" rel="noreferrer">
+              IGDB
+            </a>{' '}
+            (Twitch <span className="font-mono">IGDB_CLIENT_ID</span> + <span className="font-mono">IGDB_CLIENT_SECRET</span> on the server) and add only the genre labels you want.
+          </p>
+
+          <div className="rounded-xl border border-zinc-700/80 bg-zinc-950/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">IGDB genre lookup</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="block min-w-0 flex-1 text-sm text-zinc-300">
+                Search query
+                <input
+                  value={extGenreQuery}
+                  onChange={(e) => setExtGenreQuery(e.target.value)}
+                  placeholder="Defaults to game name if empty"
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setExtGenreQuery(name.trim())}
+                className="shrink-0 rounded-lg border border-zinc-600 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-800"
+              >
+                Use game name
+              </button>
+            </div>
+            <div className="mt-3">
+              <button
+                type="button"
+                disabled={igdbBusy}
+                onClick={() => void searchIgdbGenres()}
+                className="rounded-lg bg-violet-600/90 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
+              >
+                {igdbBusy ? 'Searching…' : 'Search IGDB'}
+              </button>
+            </div>
+            {igdbErr ? <p className="mt-2 text-xs text-rose-300">{igdbErr}</p> : null}
+            <div className="mt-4">
+              {igdbMatches.length === 0 ? (
+                <p className="text-xs text-zinc-600">No results yet.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {igdbMatches.map((m) => (
+                    <li key={`igdb-${m.externalId}`} className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
+                      <p className="text-sm font-semibold text-zinc-100">{m.title}</p>
+                      {m.genres.length ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {m.genres.map((g) => (
+                            <button
+                              key={g}
+                              type="button"
+                              onClick={() => addExternalGenres([g])}
+                              className="rounded-md border border-violet-500/30 bg-violet-950/40 px-2 py-1 text-xs font-medium text-violet-100 hover:bg-violet-900/60"
+                            >
+                              + {g}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-xs text-zinc-500">No genres on this listing.</p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => addExternalGenres(m.genres)}
+                        className="mt-2 text-xs font-semibold text-violet-300/90 underline-offset-2 hover:underline"
+                      >
+                        Add all from this title
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
           <p className="text-xs text-zinc-500">
-            New names appear in this form right away; they are saved to the shared pool in Supabase only when you post
-            the review.
+            New genre names appear in this form right away; they hit the shared pool in Supabase only when you post the
+            review.
           </p>
           <div className="flex flex-wrap gap-2">
             {poolGenres.map((g) => (

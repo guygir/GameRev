@@ -7,6 +7,7 @@ export type AddGameBody = {
   name: string
   subtitle: string
   coverImageUrl: string | null
+  platforms: string[]
   hltbMainHours: number | null
   hltbExtrasHours: number | null
   hltbCompletionistHours: number | null

@@ -11,6 +11,7 @@ export type GameReviewViewModel = {
   name: string
   subtitle: string
   coverImageUrl: string | null
+  platforms: string[]
   hltbMain: string
   hltbExtras: string
   hltbCompletionist: string
@@ -55,12 +56,12 @@ export function GameReviewView({
     return (
       <img
         src={vm.coverImageUrl}
-        alt=""
+        alt={`${vm.name} cover art`}
         className="h-full w-full object-cover"
         loading="lazy"
       />
     )
-  }, [theme.cover, vm.coverImageUrl])
+  }, [theme.cover, vm.coverImageUrl, vm.name])
 
   const setMode = useCallback(
     (next: ReviewMode) => {
@@ -149,6 +150,19 @@ export function GameReviewView({
                   </div>
                 </dl>
               </div>
+
+              {vm.platforms.length ? (
+                <div>
+                  <h2 className={clsx(theme.fontDisplay, theme.h2)}>Platforms</h2>
+                  <ul className="mt-3 flex flex-wrap gap-2">
+                    {vm.platforms.map((p) => (
+                      <li key={p} className={theme.tagPill}>
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <div>
                 <h2 className={clsx(theme.fontDisplay, theme.h2)}>Genres</h2>
