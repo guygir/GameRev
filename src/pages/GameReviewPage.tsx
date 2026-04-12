@@ -226,11 +226,12 @@ export function GameReviewPage() {
           to={`/addgame?edit=${encodeURIComponent(slug)}`}
           className="text-sm font-semibold text-emerald-300/90 underline-offset-4 hover:underline"
         >
-          Edit this review
+          Edit in Add game
         </Link>
         <span className="mx-2 text-zinc-600">·</span>
         <span className="text-xs text-zinc-500">
-          JSON: <span className="font-mono text-zinc-400">/api/review?slug={slug}</span>
+          Same as choosing this title in the load dropdown on <span className="font-mono">/addgame</span>. JSON:{' '}
+          <span className="font-mono">/api/review?slug={slug}</span>
         </span>
       </div>
       <CommentsSection gameId={gameId} mode={mode} initialComments={comments} />

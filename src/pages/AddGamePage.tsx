@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { statAxes, statAxisTooltips, type GameStats } from '../review/gameStats'
@@ -89,8 +89,8 @@ function ChipToggle({
 
 export function AddGamePage() {
   const sb = useMemo(() => getSupabaseBrowser(), [])
-  const [searchParams] = useSearchParams()
-  const editSlug = (searchParams.get('edit') ?? '').trim() || null
+  const [searchParams, setSearchParams] = useSearchParams()
+  const loadReviewSlug = useMemo(() => (searchParams.get('edit') ?? '').trim(), [searchParams])
 
   const [poolGenres, setPoolGenres] = useState<string[]>([])
   const [poolTags, setPoolTags] = useState<string[]>([])
@@ -134,6 +134,41 @@ export function AddGamePage() {
   const [editLoading, setEditLoading] = useState(false)
   const [editLoadError, setEditLoadError] = useState<string | null>(null)
 
+  /** Tracks last loaded edit slug so we only reset the form when switching away from an edit, not on first paint. */
+  const lastLoadedEditSlugRef = useRef<string>('')
+
+  const resetNewReviewForm = useCallback(() => {
+    setName('')
+    setSubtitle('')
+    setReleaseLabel('')
+    setPassword('')
+    setHltbQuery('')
+    setHltbHits([])
+    setHltbBusy(false)
+    setHltbDetailBusy(false)
+    setHltbError(null)
+    setReviewPlatforms([])
+    setCoverImageUrl(null)
+    setCoverPreviewFailed(false)
+    setHltbMainHours(null)
+    setHltbExtrasHours(null)
+    setHltbCompletionistHours(null)
+    setSelectedGenres(new Set())
+    setGenreDraft('')
+    setExtGenreQuery('')
+    setIgdbMatches([])
+    setIgdbBusy(false)
+    setIgdbErr(null)
+    setSelectedTags(new Set())
+    setTagDraft('')
+    setStats(defaultStats())
+    setPlayIfLikedText('')
+    setProsText('')
+    setConsText('')
+    setSubmitStatus(null)
+    setSavedSlug(null)
+  }, [])
+
   useEffect(() => {
     const client = sb
     if (!client) return
@@ -157,7 +192,12 @@ export function AddGamePage() {
   }, [sb])
 
   useEffect(() => {
-    if (!sb || !editSlug) {
+    if (!sb) return
+    if (!loadReviewSlug) {
+      if (lastLoadedEditSlugRef.current !== '') {
+        resetNewReviewForm()
+      }
+      lastLoadedEditSlugRef.current = ''
       setEditLoading(false)
       setEditLoadError(null)
       return
@@ -204,7 +244,7 @@ export function AddGamePage() {
           game_tags ( tag )
         `,
         )
-        .eq('slug', editSlug)
+        .eq('slug', loadReviewSlug)
         .maybeSingle()
       if (cancelled) return
       if (error) {
@@ -240,12 +280,15 @@ export function AddGamePage() {
       setPlayIfLikedText(pil.map((p) => p.name).join('\n'))
       setExtGenreQuery(row.name)
       setHltbQuery(row.name)
+      setIgdbMatches([])
+      setIgdbErr(null)
+      lastLoadedEditSlugRef.current = loadReviewSlug
       setEditLoading(false)
     })()
     return () => {
       cancelled = true
     }
-  }, [sb, editSlug])
+  }, [sb, loadReviewSlug, resetNewReviewForm])
 
   useEffect(() => {
     const q = hltbQuery.trim()
@@ -418,7 +461,7 @@ export function AddGamePage() {
       setSubmitStatus('Game name is required.')
       return
     }
-    if (editSlug && (editLoading || editLoadError)) {
+    if (loadReviewSlug && (editLoading || editLoadError)) {
       setSubmitStatus('Wait for the review to finish loading, or fix the load error above.')
       return
     }
@@ -441,9 +484,9 @@ export function AddGamePage() {
         pros: linesToList(prosText),
         cons: linesToList(consText),
         playIfLiked,
-        ...(editSlug ? { slug: editSlug } : {}),
+        ...(loadReviewSlug ? { slug: loadReviewSlug } : {}),
       }
-      const url = editSlug ? '/api/update-game' : '/api/add-game'
+      const url = loadReviewSlug ? '/api/update-game' : '/api/add-game'
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -459,7 +502,7 @@ export function AddGamePage() {
       }
       if (!json.slug) throw new Error('Missing slug in response')
       setSavedSlug(json.slug)
-      setSubmitStatus(editSlug ? 'Updated.' : 'Saved.')
+      setSubmitStatus(loadReviewSlug ? 'Updated.' : 'Saved.')
     } catch (e) {
       setSubmitStatus(e instanceof Error ? e.message : 'Save failed')
     } finally {
@@ -470,7 +513,7 @@ export function AddGamePage() {
     coverImageUrl,
     editLoadError,
     editLoading,
-    editSlug,
+    loadReviewSlug,
     hltbCompletionistHours,
     hltbExtrasHours,
     hltbMainHours,
@@ -504,18 +547,43 @@ export function AddGamePage() {
       <div className="mx-auto max-w-3xl space-y-10">
         <header>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">GameRev</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">{editSlug ? 'Edit review' : 'Add a review'}</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">{loadReviewSlug ? 'Edit review' : 'Add a review'}</h1>
           <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-            HLTB and IGDB genre lookups run on the server (<span className="font-mono">/api/*</span>). Publishing or updating
-            needs <span className="font-mono">SUPABASE_SERVICE_ROLE_KEY</span> and{' '}
-            <span className="font-mono">ADD_GAME_PASSWORD</span>. IGDB needs Twitch{' '}
-            <span className="font-mono">IGDB_CLIENT_ID</span> + <span className="font-mono">IGDB_CLIENT_SECRET</span> (same on
-            Vercel—never commit real values to git). Public review URL: <span className="font-mono">/g/your-slug</span>; JSON:{' '}
-            <span className="font-mono">GET /api/review?slug=…</span>.
+            Use <span className="font-semibold text-zinc-300">Load review to edit</span> below to pick an existing post, then{' '}
+            <span className="font-semibold text-zinc-300">Save changes</span>. Leave it on “New review” to publish a new one.
+            HLTB and IGDB run on <span className="font-mono">/api/*</span>. You need{' '}
+            <span className="font-mono">SUPABASE_SERVICE_ROLE_KEY</span> and <span className="font-mono">ADD_GAME_PASSWORD</span>.
+            IGDB: <span className="font-mono">IGDB_CLIENT_ID</span> + <span className="font-mono">IGDB_CLIENT_SECRET</span>. Public
+            URL: <span className="font-mono">/g/your-slug</span>; JSON: <span className="font-mono">GET /api/review?slug=…</span>.
           </p>
-          {editSlug ? (
+          <label className="mt-6 block text-sm text-zinc-300">
+            <span className="font-medium text-zinc-200">Load review to edit</span>
+            <select
+              className="mt-2 w-full max-w-xl rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none ring-emerald-500/30 focus:ring-2"
+              value={loadReviewSlug}
+              onChange={(e) => {
+                const v = e.target.value.trim()
+                if (!v) {
+                  setSearchParams({}, { replace: true })
+                } else {
+                  setSearchParams({ edit: v }, { replace: true })
+                }
+              }}
+            >
+              <option value="">New review (publish)</option>
+              {reviewedGames.map((g) => (
+                <option key={g.slug} value={g.slug}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-zinc-500">
+              Slug and first publish date stay the same when you update. Comments stay on the review.
+            </span>
+          </label>
+          {loadReviewSlug ? (
             <p className="mt-2 text-xs text-zinc-500">
-              Editing <span className="font-mono text-zinc-400">{editSlug}</span> — slug stays the same; comments stay attached.
+              Editing <span className="font-mono text-zinc-400">{loadReviewSlug}</span>
             </p>
           ) : null}
           {editLoading ? <p className="mt-3 text-sm text-zinc-400">Loading review…</p> : null}
@@ -885,11 +953,11 @@ export function AddGamePage() {
           />
           <button
             type="button"
-            disabled={submitBusy || (!!editSlug && (!!editLoadError || editLoading))}
+            disabled={submitBusy || (!!loadReviewSlug && (!!editLoadError || editLoading))}
             onClick={() => void submit()}
             className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50"
           >
-            {submitBusy ? 'Saving…' : editSlug ? 'Save changes' : 'Publish review'}
+            {submitBusy ? 'Saving…' : loadReviewSlug ? 'Save changes' : 'Publish review'}
           </button>
           {submitStatus ? (
             <p className="text-sm text-zinc-300">
