@@ -3,9 +3,11 @@ import type { GameStats } from '../review/gameStats'
 export type { GameStatAxis, GameStats } from '../review/gameStats'
 export { statAxes, statAxisTooltips } from '../review/gameStats'
 
+/** Demo content for local/mock pages—not scraped from IGDB or HLTB. */
 export const mockGame = {
   name: 'Signalis',
   subtitle: 'A survival horror love letter to late PS1 dread',
+  releaseLabel: 'October 2022' as const,
   coverImageUrl: 'https://howlongtobeat.com/games/57149_Signalis.jpg',
   platforms: ['Nintendo Switch', 'PC', 'PlayStation 4', 'Xbox One'] as const,
   hltbMain: '8h',

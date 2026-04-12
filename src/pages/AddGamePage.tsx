@@ -47,6 +47,7 @@ type IgdbGenreRow = {
   title: string
   externalId: string
   genres: string[]
+  releaseLabel: string | null
 }
 
 function ChipToggle({
@@ -83,6 +84,7 @@ export function AddGamePage() {
 
   const [name, setName] = useState('')
   const [subtitle, setSubtitle] = useState('')
+  const [releaseLabel, setReleaseLabel] = useState('')
   const [password, setPassword] = useState('')
 
   const [hltbQuery, setHltbQuery] = useState('')
@@ -235,7 +237,14 @@ export function AddGamePage() {
         )
       }
       if (!res.ok) throw new Error(json.error ?? 'IGDB request failed')
-      setIgdbMatches(json.matches ?? [])
+      setIgdbMatches(
+        (json.matches ?? []).map((m) => ({
+          title: m.title,
+          externalId: m.externalId,
+          genres: Array.isArray(m.genres) ? m.genres : [],
+          releaseLabel: m.releaseLabel ?? null,
+        })),
+      )
     } catch (e) {
       setIgdbErr(e instanceof Error ? e.message : 'IGDB failed')
       setIgdbMatches([])
@@ -309,6 +318,7 @@ export function AddGamePage() {
         password: password,
         name: name.trim(),
         subtitle: subtitle.trim(),
+        releaseLabel: releaseLabel.trim() || null,
         coverImageUrl,
         platforms: reviewPlatforms,
         hltbMainHours,
@@ -346,6 +356,7 @@ export function AddGamePage() {
     password,
     playIfLikedText,
     prosText,
+    releaseLabel,
     reviewPlatforms,
     selectedGenres,
     selectedTags,
@@ -486,9 +497,18 @@ export function AddGamePage() {
             className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
             placeholder="e.g. A survival horror love letter to late PS1 dread"
           />
+          <label className="mt-4 block text-sm font-medium text-zinc-300">
+            Release <span className="font-normal text-zinc-500">(month and year, optional)</span>
+          </label>
+          <input
+            value={releaseLabel}
+            onChange={(e) => setReleaseLabel(e.target.value)}
+            placeholder="e.g. October 2022 — use “Use IGDB release” on a result below"
+            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
+          />
           <p className="text-xs text-zinc-500">
             Cover URL, platforms, and hours come from search; picking a result can refine them and fills subtitle from
-            the HLTB game page when available.
+            the HLTB game page when available. Release comes from IGDB when you use the button on a match.
           </p>
         </section>
 
@@ -564,6 +584,22 @@ export function AddGamePage() {
                   {igdbMatches.map((m) => (
                     <li key={`igdb-${m.externalId}`} className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
                       <p className="text-sm font-semibold text-zinc-100">{m.title}</p>
+                      {m.releaseLabel ? (
+                        <p className="mt-1 text-xs text-zinc-400">
+                          IGDB release: <span className="text-zinc-300">{m.releaseLabel}</span>
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-zinc-600">No first release date in IGDB for this listing.</p>
+                      )}
+                      {m.releaseLabel ? (
+                        <button
+                          type="button"
+                          onClick={() => setReleaseLabel(m.releaseLabel ?? '')}
+                          className="mt-1 text-xs font-semibold text-violet-300/90 underline-offset-2 hover:underline"
+                        >
+                          Use IGDB release
+                        </button>
+                      ) : null}
                       {m.genres.length ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {m.genres.map((g) => (

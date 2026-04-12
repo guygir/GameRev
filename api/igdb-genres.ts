@@ -5,6 +5,16 @@ export type IgdbGenreMatch = {
   title: string
   externalId: string
   genres: string[]
+  /** Month + year from IGDB `first_release_date` (UTC), e.g. "October 2022". */
+  releaseLabel: string | null
+}
+
+/** IGDB `first_release_date` is Unix seconds (UTC). */
+export function formatIgdbFirstReleaseMonthYear(firstReleaseDate: number | null | undefined): string | null {
+  if (firstReleaseDate == null || typeof firstReleaseDate !== 'number' || firstReleaseDate <= 0) return null
+  const d = new Date(firstReleaseDate * 1000)
+  if (Number.isNaN(d.getTime())) return null
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(d)
 }
 
 let cachedToken: { value: string; exp: number } | null = null
@@ -78,7 +88,7 @@ export async function fetchIgdbGenreMatches(
 
   const token = await getIgdbAccessToken(id, secret)
   const apicalypse = `search "${safe}";
-fields name, genres.name;
+fields name, genres.name, first_release_date;
 limit 8;
 `
 
@@ -111,6 +121,7 @@ limit 8;
   const rows = parsed as Array<{
     id?: number
     name?: string
+    first_release_date?: number | null
     genres?: Array<{ name?: string }>
   }>
 
@@ -123,6 +134,7 @@ limit 8;
       title: (typeof row.name === 'string' && row.name.trim()) || 'Unknown',
       externalId: String(row.id ?? ''),
       genres: [...new Set(genres)],
+      releaseLabel: formatIgdbFirstReleaseMonthYear(row.first_release_date ?? null),
     }
   })
 }

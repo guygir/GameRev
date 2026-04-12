@@ -10,6 +10,8 @@ import clsx from 'clsx'
 export type GameReviewViewModel = {
   name: string
   subtitle: string
+  /** Month + year, e.g. from IGDB; shown under subtitle when set. */
+  releaseLabel: string | null
   coverImageUrl: string | null
   platforms: string[]
   hltbMain: string
@@ -114,6 +116,14 @@ export function GameReviewView({
               >
                 {vm.subtitle}
               </p>
+              {vm.releaseLabel ? (
+                <p
+                  className={clsx('motion-rise mt-2 text-sm', theme.fontBody, theme.navMuted)}
+                  style={{ ['--motion-rise-delay' as string]: '240ms' }}
+                >
+                  Released {vm.releaseLabel}
+                </p>
+              ) : null}
             </div>
             <div
               className="motion-rise md:col-span-5 md:-translate-y-6 md:justify-self-end"

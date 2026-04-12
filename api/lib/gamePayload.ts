@@ -6,6 +6,8 @@ export type AddGameBody = {
   password: string
   name: string
   subtitle: string
+  /** Month + year label (from IGDB or typed), e.g. "October 2022". */
+  releaseLabel: string | null
   coverImageUrl: string | null
   platforms: string[]
   hltbMainHours: number | null

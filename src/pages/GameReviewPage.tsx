@@ -13,6 +13,7 @@ type GameJoinRow = {
   slug: string
   name: string
   subtitle: string
+  release_label: string | null
   cover_image_url: string | null
   platforms: string[] | null
   hltb_main_hours: number | null
@@ -69,6 +70,7 @@ export function GameReviewPage() {
           slug,
           name,
           subtitle,
+          release_label,
           cover_image_url,
           platforms,
           hltb_main_hours,
@@ -114,6 +116,7 @@ export function GameReviewPage() {
       const nextVm: GameReviewViewModel = {
         name: row.name,
         subtitle: row.subtitle,
+        releaseLabel: row.release_label,
         coverImageUrl: row.cover_image_url,
         platforms: Array.isArray(row.platforms) ? row.platforms : [],
         hltbMain: formatHltbHours(row.hltb_main_hours),

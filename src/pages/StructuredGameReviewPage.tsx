@@ -13,6 +13,7 @@ export function StructuredGameReviewPage() {
     () => ({
       name: mockGame.name,
       subtitle: mockGame.subtitle,
+      releaseLabel: mockGame.releaseLabel,
       coverImageUrl: mockGame.coverImageUrl,
       platforms: [...mockGame.platforms],
       hltbMain: mockGame.hltbMain,

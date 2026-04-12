@@ -54,6 +54,8 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   }
 
   const subtitle = typeof b.subtitle === 'string' ? b.subtitle.trim().slice(0, 500) : ''
+  const releaseLabelRaw = typeof b.releaseLabel === 'string' ? b.releaseLabel.trim().slice(0, 48) : ''
+  const releaseLabel = releaseLabelRaw || null
   const coverImageUrl =
     typeof b.coverImageUrl === 'string' && b.coverImageUrl.trim()
       ? b.coverImageUrl.trim().slice(0, 2000)
@@ -106,6 +108,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
       slug,
       name,
       subtitle,
+      release_label: releaseLabel,
       cover_image_url: coverImageUrl,
       platforms,
       hltb_main_hours: hltbMainHours,

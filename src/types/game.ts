@@ -12,6 +12,7 @@ export type GameRow = {
   slug: string
   name: string
   subtitle: string
+  release_label: string | null
   cover_image_url: string | null
   platforms: string[]
   hltb_main_hours: number | null
