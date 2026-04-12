@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { HowLongToBeatService } from 'howlongtobeat'
+import { HowLongToBeatService } from '@micamerzeau/howlongtobeat'
 
 const hltb = new HowLongToBeatService()
 

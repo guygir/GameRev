@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
-import { HowLongToBeatService } from 'howlongtobeat'
+import { HowLongToBeatService } from '@micamerzeau/howlongtobeat'
 import { addGameFromBody } from './addGame'
 
 function readBody(req: IncomingMessage): Promise<string> {

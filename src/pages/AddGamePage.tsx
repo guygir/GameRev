@@ -305,12 +305,15 @@ export function AddGamePage() {
             onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
           />
-          <label className="mt-4 block text-sm font-medium text-zinc-300">Subtitle / deck</label>
+          <label className="mt-4 block text-sm font-medium text-zinc-300">
+            Subtitle <span className="font-normal text-zinc-500">(one line under the title)</span>
+          </label>
           <textarea
             value={subtitle}
             onChange={(e) => setSubtitle(e.target.value)}
             rows={3}
             className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
+            placeholder="e.g. A survival horror love letter to late PS1 dread"
           />
           <p className="text-xs text-zinc-500">
             Cover + HLTB hours come from your HLTB pick above (you can still edit name after).
@@ -340,6 +343,10 @@ export function AddGamePage() {
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold text-white">Genres</h2>
+          <p className="text-xs text-zinc-500">
+            New names appear in this form right away; they are saved to the shared pool in Supabase only when you post
+            the review.
+          </p>
           <div className="flex flex-wrap gap-2">
             {poolGenres.map((g) => (
               <ChipToggle key={g} label={g} active={selectedGenres.has(g)} onClick={() => toggleGenre(g)} />
@@ -370,6 +377,9 @@ export function AddGamePage() {
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold text-white">Tags</h2>
+          <p className="text-xs text-zinc-500">
+            Same as genres: local list updates immediately; Supabase gets the new tag rows on successful POST only.
+          </p>
           <div className="flex flex-wrap gap-2">
             {poolTags.map((t) => (
               <ChipToggle key={t} label={t} active={selectedTags.has(t)} onClick={() => toggleTag(t)} />

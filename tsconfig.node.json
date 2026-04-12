@@ -23,6 +23,7 @@
   "include": [
     "vite.config.ts",
     "server/**/*.ts",
+    "server/**/*.d.ts",
     "api/**/*.ts",
     "src/review/gameStats.ts",
     "src/types/game.ts"
