@@ -480,14 +480,24 @@ export function AddGamePage() {
     setAccentMsg(null)
     setCoverAccentBusy(true)
     try {
-      const idx = await suggestAccentPresetFromCoverUrl(coverImageUrl)
-      if (idx == null) {
-        setAccentMsg(
-          'Could not sample this image (often CORS: the host blocks canvas reads). Choose a preset manually.',
-        )
-      } else {
-        setAccentPreset(idx)
+      const res = await fetch('/api/sample-cover-accent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: coverImageUrl }),
+      })
+      const json = (await res.json()) as { presetIndex?: number; error?: string }
+      if (res.ok && typeof json.presetIndex === 'number' && json.presetIndex >= 0 && json.presetIndex <= 4) {
+        setAccentPreset(json.presetIndex)
+        return
       }
+      const fallback = await suggestAccentPresetFromCoverUrl(coverImageUrl)
+      if (fallback != null) {
+        setAccentPreset(fallback)
+        return
+      }
+      setAccentMsg(json.error ?? 'Could not sample this cover. Choose a preset manually.')
+    } catch {
+      setAccentMsg('Could not sample this cover. Choose a preset manually.')
     } finally {
       setCoverAccentBusy(false)
     }
@@ -781,7 +791,8 @@ export function AddGamePage() {
                 {coverAccentBusy ? 'Sampling cover…' : 'Suggest from cover'}
               </button>
               <span className="text-xs text-zinc-500">
-                Picks the closest preset from cover art (needs CORS on the image host).
+                HowLongToBeat covers use the server (no CORS in the browser). Other hosts may fall back to canvas
+                when allowed.
               </span>
             </div>
             {accentMsg ? <p className="mt-2 text-xs text-amber-200/90">{accentMsg}</p> : null}

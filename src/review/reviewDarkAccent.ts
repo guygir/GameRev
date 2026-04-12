@@ -20,6 +20,25 @@ export const ACCENT_PRESET_HUES = [38, 198, 268, 145, 328] as const
 
 export type AccentPresetIndex = 0 | 1 | 2 | 3 | 4
 
+function hueDistance(a: number, b: number): number {
+  const d = Math.abs(a - b)
+  return Math.min(d, 360 - d)
+}
+
+/** Closest preset index for a dominant hue (0–359). */
+export function nearestAccentPresetIndex(hue: number): AccentPresetIndex {
+  let best: AccentPresetIndex = 0
+  let bestD = Infinity
+  for (let i = 0; i < ACCENT_PRESET_HUES.length; i++) {
+    const d = hueDistance(hue, ACCENT_PRESET_HUES[i]!)
+    if (d < bestD) {
+      bestD = d
+      best = i as AccentPresetIndex
+    }
+  }
+  return best
+}
+
 /** Resolve final hue: DB `accent_preset` null/undefined → slug hash; 0–4 → preset table. */
 export function resolveDarkAccentHue(slug: string, accentPreset: number | null | undefined): number {
   if (accentPreset == null || Number.isNaN(accentPreset)) return slugToAccentHue(slug)

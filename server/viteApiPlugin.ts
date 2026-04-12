@@ -5,6 +5,7 @@ import { addGameFromBody } from '../api/lib/addGame.js'
 import { updateGameFromBody } from '../api/lib/updateGame.js'
 import { getServiceSupabase } from '../api/lib/supabaseAdmin.js'
 import { fetchIgdbGenreMatches } from '../api/igdb-genres.js'
+import { sampleCoverAccentFromUrl } from '../api/lib/sampleCoverAccentFromUrl.js'
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -140,6 +141,25 @@ function installApiRoutes(
           return
         }
         sendJson(res, 200, { slug: out.slug })
+        return
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/sample-cover-accent') {
+        const text = await readBody(req)
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(text || '{}') as unknown
+        } catch {
+          sendJson(res, 400, { error: 'Invalid JSON' })
+          return
+        }
+        const rawUrl = typeof (parsed as { url?: unknown }).url === 'string' ? (parsed as { url: string }).url : ''
+        const out = await sampleCoverAccentFromUrl(rawUrl)
+        if (!out.ok) {
+          sendJson(res, 422, { error: out.error })
+          return
+        }
+        sendJson(res, 200, { presetIndex: out.presetIndex })
         return
       }
 

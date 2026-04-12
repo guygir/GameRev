@@ -66,20 +66,21 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
   return (
     <section
       className={clsx(
-        'mx-auto max-w-6xl px-4 pb-32 pt-4 md:px-8',
+        'w-full pb-32 pt-4',
         theme.fontBody,
-        isDark && 'grain-bg bg-[#120d0a]',
+        isDark ? 'grain-bg bg-[#120d0a]' : 'bg-[#f4f4f5]',
       )}
       style={isDark ? reviewDarkAccentCssVars(accentHue) : undefined}
     >
-      <div
-        className={clsx(
-          'rounded-2xl border p-6 md:p-8',
-          isDark
-            ? 'border-stone-700/40 bg-[#141210] text-[#ebe6df]'
-            : 'border-zinc-200 bg-white text-zinc-900',
-        )}
-      >
+      <div className="mx-auto max-w-6xl px-4 md:px-8">
+        <div
+          className={clsx(
+            'rounded-2xl border p-6 md:p-8',
+            isDark
+              ? 'border-stone-700/40 bg-[#141210] text-[#ebe6df]'
+              : 'border-zinc-200 bg-white text-zinc-900',
+          )}
+        >
         <h2 className={clsx(theme.fontDisplay, 'text-2xl font-semibold', isDark && 'text-[#f5f0ea]')}>
           Comments
         </h2>
@@ -172,6 +173,7 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
             ) : null}
           </div>
         </div>
+      </div>
       </div>
     </section>
   )

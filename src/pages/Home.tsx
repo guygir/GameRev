@@ -74,10 +74,15 @@ export function Home() {
             surface={isLight ? 'review' : 'home'}
           />
         </div>
-        <h1 className={clsx('text-3xl font-semibold tracking-tight md:text-4xl', isLight ? homeTheme.title : 'text-white')}>
+        <h1
+          className={clsx(
+            'text-3xl font-semibold tracking-tight md:text-4xl',
+            isLight ? 'text-zinc-950' : 'text-white',
+          )}
+        >
           GameRev
         </h1>
-        <p className={clsx('mt-4 max-w-2xl text-sm leading-relaxed', isLight ? homeTheme.subtitle : 'text-zinc-400')}>
+        <p className={clsx('mt-4 max-w-2xl text-sm leading-relaxed', isLight ? 'text-zinc-600' : 'text-zinc-400')}>
           GameRev is a small catalog of video game reviews: editorial layouts, a six-stat radar, HowLongToBeat-style
           times, and reader comments—written to be read, not scrolled past.
         </p>
