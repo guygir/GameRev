@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { mockGame, mockPlayIfLiked } from '../mocks/mockGame'
 import { GameReviewView, type GameReviewViewModel } from '../components/GameReviewView'
 import type { ReviewMode } from '../review/getReviewTheme'
 import { formatReviewPublishedLabel } from '../lib/formatReviewPublished'
 import { resolveReviewMode, writeReviewModePreference } from '../lib/reviewModePreference'
+import { slugToAccentHue } from '../review/reviewDarkAccent'
+
+const SAMPLE_REVIEW_ACCENT_HUE = slugToAccentHue('signalis')
 
 export function StructuredGameReviewPage() {
   const [params, setParams] = useSearchParams()
@@ -36,6 +39,7 @@ export function StructuredGameReviewPage() {
       cons: [...mockGame.cons],
       stats: { ...mockGame.stats },
       radarLabel: 'Signalis review stats radar chart',
+      accentPreset: null,
     }),
     [],
   )
@@ -52,25 +56,16 @@ export function StructuredGameReviewPage() {
   )
 
   return (
-    <>
-      <GameReviewView
-        vm={vm}
-        mode={mode}
-        onModeChange={setMode}
-        showModeToggle
-        navCrumbs={[
-          { label: 'Home', to: '/' },
-          { label: 'Sample review (Signalis)' },
-        ]}
-      />
-      <div className="pointer-events-none fixed bottom-24 left-1/2 z-[60] w-[min(92vw,360px)] -translate-x-1/2 text-center">
-        <Link
-          to="/"
-          className="pointer-events-auto text-xs font-semibold text-zinc-500 underline-offset-4 hover:underline"
-        >
-          Back to reviews
-        </Link>
-      </div>
-    </>
+    <GameReviewView
+      vm={vm}
+      mode={mode}
+      onModeChange={setMode}
+      darkAccentHue={SAMPLE_REVIEW_ACCENT_HUE}
+      showModeToggle
+      navCrumbs={[
+        { label: 'Home', to: '/' },
+        { label: 'Sample review (Signalis)' },
+      ]}
+    />
   )
 }

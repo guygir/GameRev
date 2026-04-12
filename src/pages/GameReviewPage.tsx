@@ -8,6 +8,7 @@ import { getSupabaseBrowser } from '../lib/supabaseClient'
 import type { ReviewMode } from '../review/getReviewTheme'
 import { formatReviewPublishedLabel } from '../lib/formatReviewPublished'
 import { resolveReviewMode, writeReviewModePreference } from '../lib/reviewModePreference'
+import { resolveDarkAccentHue } from '../review/reviewDarkAccent'
 
 type GameJoinRow = {
   id: string
@@ -16,6 +17,7 @@ type GameJoinRow = {
   subtitle: string
   created_at: string
   release_label: string | null
+  accent_preset?: number | null
   cover_image_url: string | null
   platforms: string[] | null
   hltb_main_hours: number | null
@@ -79,6 +81,7 @@ export function GameReviewPage() {
           subtitle,
           created_at,
           release_label,
+          accent_preset,
           cover_image_url,
           platforms,
           hltb_main_hours,
@@ -138,6 +141,10 @@ export function GameReviewPage() {
         cons: row.cons ?? [],
         stats: row.stats,
         radarLabel: `${row.name} review stats radar chart`,
+        accentPreset:
+          typeof row.accent_preset === 'number' && row.accent_preset >= 0 && row.accent_preset <= 4
+            ? row.accent_preset
+            : null,
       }
 
       setVm(nextVm)
@@ -209,49 +216,27 @@ export function GameReviewPage() {
 
   if (!vm || !gameId || !slug) return null
 
+  const darkAccentHue = resolveDarkAccentHue(slug, vm.accentPreset ?? null)
+
   return (
     <>
       <GameReviewView
         vm={vm}
         mode={mode}
         onModeChange={setMode}
+        darkAccentHue={darkAccentHue}
         showModeToggle
         navCrumbs={[
           { label: 'Home', to: '/' },
           { label: vm.name },
         ]}
       />
-      <div
-        className={
-          mode === 'dark'
-            ? 'relative mx-auto max-w-6xl px-4 pb-4 pt-2 text-[#f4e9d8]/90 md:px-8'
-            : 'relative mx-auto max-w-6xl px-4 pb-4 pt-2 text-zinc-700 md:px-8'
-        }
-      >
-        <Link
-          to={`/addgame?edit=${encodeURIComponent(slug)}`}
-          className={
-            mode === 'dark'
-              ? 'text-sm font-semibold text-[#e8b86d] underline-offset-4 hover:text-[#ffe7c2] hover:underline'
-              : 'text-sm font-semibold text-brand underline-offset-4 hover:text-brand-hover hover:underline'
-          }
-        >
-          Edit in Add game
-        </Link>
-      </div>
-      <CommentsSection gameId={gameId} mode={mode} initialComments={comments} />
-      <div className="pointer-events-none fixed bottom-24 left-1/2 z-[60] w-[min(92vw,360px)] -translate-x-1/2 text-center">
-        <Link
-          to="/"
-          className={
-            mode === 'dark'
-              ? 'pointer-events-auto text-xs font-semibold text-[#f4e9d8]/55 underline-offset-4 hover:text-[#ffe7c2] hover:underline'
-              : 'pointer-events-auto text-xs font-semibold text-zinc-500 underline-offset-4 hover:text-zinc-800 hover:underline'
-          }
-        >
-          Back to reviews
-        </Link>
-      </div>
+      <CommentsSection
+        gameId={gameId}
+        mode={mode}
+        initialComments={comments}
+        darkAccentHue={darkAccentHue}
+      />
     </>
   )
 }

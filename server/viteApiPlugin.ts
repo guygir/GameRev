@@ -163,6 +163,7 @@ function installApiRoutes(
             name,
             subtitle,
             release_label,
+            accent_preset,
             cover_image_url,
             platforms,
             hltb_main_hours,
@@ -192,6 +193,7 @@ function installApiRoutes(
           name: string
           subtitle: string
           release_label: string | null
+          accent_preset: number | null
           cover_image_url: string | null
           platforms: string[] | null
           hltb_main_hours: number | null
@@ -212,6 +214,7 @@ function installApiRoutes(
             name: row.name,
             subtitle: row.subtitle,
             releaseLabel: row.release_label,
+            accentPreset: row.accent_preset ?? null,
             coverImageUrl: row.cover_image_url,
             platforms: row.platforms ?? [],
             hltbMainHours: row.hltb_main_hours,

@@ -3,6 +3,7 @@ import {
   buildReviewedLookup,
   normalizePlayIfLiked,
   normalizeStringList,
+  parseAccentPreset,
   parseStats,
   resolvePlayIfLiked,
   type AddGameBody,
@@ -60,6 +61,9 @@ export async function updateGameFromBody(
 
   const stats = parseStats(b.stats)
   if (!stats) return { ok: false, status: 400, error: 'Invalid stats (need 0–100 per axis)' }
+
+  const shouldPatchAccent = Object.prototype.hasOwnProperty.call(b, 'accentPreset')
+  const accentPresetValue = shouldPatchAccent ? parseAccentPreset(b.accentPreset) : undefined
 
   const platforms = normalizeStringList(b.platforms, 24, 48)
   const genres = normalizeStringList(b.genres, 24, 80)
@@ -122,6 +126,7 @@ export async function updateGameFromBody(
       pros,
       cons,
       play_if_liked,
+      ...(shouldPatchAccent ? { accent_preset: accentPresetValue } : {}),
     })
     .eq('id', gameId)
 

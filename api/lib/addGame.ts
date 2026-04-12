@@ -4,6 +4,7 @@ import {
   buildReviewedLookup,
   normalizePlayIfLiked,
   normalizeStringList,
+  parseAccentPreset,
   parseStats,
   resolvePlayIfLiked,
   type AddGameBody,
@@ -64,6 +65,8 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   const stats = parseStats(b.stats)
   if (!stats) return { ok: false, status: 400, error: 'Invalid stats (need 0–100 per axis)' }
 
+  const accentPreset = parseAccentPreset(b.accentPreset)
+
   const platforms = normalizeStringList(b.platforms, 24, 48)
   const genres = normalizeStringList(b.genres, 24, 80)
   const tags = normalizeStringList(b.tags, 40, 80)
@@ -118,6 +121,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
       pros,
       cons,
       play_if_liked,
+      accent_preset: accentPreset,
     })
     .select('id')
     .single()

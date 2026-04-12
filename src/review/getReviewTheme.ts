@@ -1,3 +1,5 @@
+import { darkRadarFromHue, DEFAULT_DARK_REVIEW_ACCENT_HUE } from './reviewDarkAccent'
+
 export type ReviewMode = 'light' | 'dark'
 
 export type ReviewRadarTheme = {
@@ -5,6 +7,11 @@ export type ReviewRadarTheme = {
   stroke: string
   grid: string
   label: string
+}
+
+export type ReviewThemeOptions = {
+  /** 0–359; dark mode only — shifts the editorial “leading” accent while keeping the same structure. */
+  darkAccentHue?: number
 }
 
 /** Single font system: Fraunces (display) + DM Sans (body). */
@@ -99,13 +106,14 @@ const lightBase = (): Omit<
   },
 })
 
+/** Dark editorial tokens; accent hues come from CSS vars on the shell (`reviewDarkAccentCssVars`). */
 const darkEditorial = (): Omit<
   ReviewTheme,
   'mode' | 'cover' | 'useGrain' | 'ambiance' | 'shell' | 'radar'
-> & { radar: ReviewRadarTheme } => ({
+> => ({
   ...TYPOGRAPHY_CHOSEN,
   navMuted: 'text-[#f4e9d8]/70',
-  eyebrow: 'text-xs font-semibold uppercase tracking-[0.35em] text-[#e8b86d]',
+  eyebrow: 'text-xs font-semibold uppercase tracking-[0.35em] text-[color:var(--review-accent)]',
   title:
     'text-5xl font-semibold leading-[0.95] tracking-tight text-[#fff4e4] md:text-7xl',
   subtitle: 'mt-5 max-w-xl text-base leading-relaxed text-[#f4e9d8]/75 md:text-lg',
@@ -120,33 +128,28 @@ const darkEditorial = (): Omit<
   hltbLabel: 'text-[0.65rem] uppercase tracking-widest text-[#f4e9d8]/50',
   hltbValue: 'mt-1 text-lg font-semibold text-[#f4e9d8]',
   genrePill:
-    'rounded-full border border-[#e8b86d]/35 bg-[#e8b86d]/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#ffe7c2]',
+    'rounded-full border border-[color:var(--review-accent-border)] bg-[color:var(--review-accent-surface)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--review-accent-bright)]',
   tagPill:
     'rounded-sm border border-white/15 px-3 py-1 text-xs text-[#f4e9d8]/80',
   details: 'group rounded-md border border-white/10 bg-black/20 p-4 open:bg-black/30',
   summary:
-    'cursor-pointer font-semibold text-[#fff4e4] outline-none transition group-open:text-[#e8b86d]',
+    'cursor-pointer font-semibold text-[#fff4e4] outline-none transition group-open:text-[color:var(--review-accent)]',
   prosHeading: 'text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/90',
   consHeading: 'text-xs font-semibold uppercase tracking-[0.2em] text-rose-300/90',
   prosBody: 'mt-2 space-y-2 text-sm leading-relaxed text-[#f4e9d8]/85',
   consBody: 'mt-2 space-y-2 text-sm leading-relaxed text-[#f4e9d8]/85',
   radarPanel:
     'relative overflow-hidden rounded-md border border-white/10 bg-gradient-to-br from-white/10 to-transparent p-2 md:p-3',
-  radarGlow: 'pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#e8b86d]/10 blur-2xl',
+  radarGlow:
+    'pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[color:var(--review-accent-glow)] blur-2xl',
   radarTitle: 'text-3xl text-[#fff4e4]',
   radarBody: 'mt-3 max-w-sm text-sm leading-relaxed text-[#f4e9d8]/70',
   statRow: 'text-sm text-[#f4e9d8]/75',
-  statValue: 'font-semibold tabular-nums text-[#e8b86d]',
-  radar: {
-    fill: '#e8b86d',
-    stroke: '#ffe7c2',
-    grid: '#f4e9d8',
-    label: '#f4e9d8',
-  },
+  statValue: 'font-semibold tabular-nums text-[color:var(--review-accent)]',
 })
 
 /** Pack 1 only: light (neutral + brand purple) or editorial dark. */
-export function getReviewTheme(mode: ReviewMode): ReviewTheme {
+export function getReviewTheme(mode: ReviewMode, opts?: ReviewThemeOptions): ReviewTheme {
   if (mode === 'light') {
     const t = lightBase()
     return {
@@ -159,6 +162,7 @@ export function getReviewTheme(mode: ReviewMode): ReviewTheme {
     }
   }
 
+  const hue = opts?.darkAccentHue ?? DEFAULT_DARK_REVIEW_ACCENT_HUE
   const t = darkEditorial()
   return {
     mode: 'dark',
@@ -167,6 +171,7 @@ export function getReviewTheme(mode: ReviewMode): ReviewTheme {
     ambiance: 'anthropic',
     shell: 'grain-bg relative min-h-[100dvh] overflow-hidden bg-[#120d0a] text-[#f4e9d8]',
     ...t,
+    radar: darkRadarFromHue(hue),
   }
 }
 

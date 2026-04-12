@@ -6,6 +6,10 @@ import { MockNav } from './MockNav'
 import { ReviewModeToggle } from './ReviewModeToggle'
 import { CoverArtAnthropic, CoverArtLight } from './ReviewCovers'
 import { getReviewTheme, type ReviewMode } from '../review/getReviewTheme'
+import {
+  DEFAULT_DARK_REVIEW_ACCENT_HUE,
+  reviewDarkAccentCssVars,
+} from '../review/reviewDarkAccent'
 import clsx from 'clsx'
 
 export type GameReviewViewModel = {
@@ -27,6 +31,8 @@ export type GameReviewViewModel = {
   cons: string[]
   stats: GameStats
   radarLabel: string
+  /** Saved preset index (0–4) or null = auto from slug; used for dark accent only. */
+  accentPreset: number | null
 }
 
 function ReviewCoverFallback({ variant }: { variant: 'anthropic' | 'light' }) {
@@ -37,6 +43,8 @@ type GameReviewViewProps = {
   vm: GameReviewViewModel
   mode: ReviewMode
   onModeChange: (mode: ReviewMode) => void
+  /** Dark mode only: resolved hue (slug hash or preset). */
+  darkAccentHue?: number
   showModeToggle?: boolean
   navCrumbs?: { label: string; to?: string }[]
   navHomeLabel?: string
@@ -47,12 +55,17 @@ export function GameReviewView({
   vm,
   mode,
   onModeChange,
+  darkAccentHue,
   showModeToggle = true,
   navCrumbs = [{ label: 'Game review' }],
   navHomeLabel,
   navHomeTo,
 }: GameReviewViewProps) {
-  const theme = useMemo(() => getReviewTheme(mode), [mode])
+  const accentHue = darkAccentHue ?? DEFAULT_DARK_REVIEW_ACCENT_HUE
+  const theme = useMemo(
+    () => getReviewTheme(mode, mode === 'dark' ? { darkAccentHue: accentHue } : undefined),
+    [mode, accentHue],
+  )
 
   const cover = useMemo(() => {
     if (!vm.coverImageUrl) {
@@ -76,15 +89,18 @@ export function GameReviewView({
   )
 
   return (
-    <div className={clsx(theme.shell, theme.fontBody)}>
+    <div
+      className={clsx(theme.shell, theme.fontBody)}
+      style={mode === 'dark' ? reviewDarkAccentCssVars(accentHue) : undefined}
+    >
       {theme.ambiance === 'anthropic' ? (
         <>
           <div
-            className="pointer-events-none absolute -left-24 top-24 h-72 w-72 rounded-full bg-[#e8b86d]/10 blur-3xl"
+            className="pointer-events-none absolute -left-24 top-24 h-72 w-72 rounded-full bg-[color:var(--review-accent-glow)] blur-3xl"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute -right-10 bottom-10 h-80 w-80 rounded-full bg-[#6c2f2f]/25 blur-3xl"
+            className="pointer-events-none absolute -right-10 bottom-10 h-80 w-80 rounded-full bg-[color:var(--review-accent-glow-2)] blur-3xl"
             aria-hidden
           />
         </>
@@ -182,25 +198,7 @@ export function GameReviewView({
           style={{ ['--motion-rise-delay' as string]: '320ms' }}
         >
           <div className="grid gap-10 md:grid-cols-12">
-            <div className="space-y-8 md:col-span-5">
-              <div>
-                <h2 className={clsx(theme.fontDisplay, theme.h2)}>How long to beat</h2>
-                <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                  <div className={theme.hltbCard}>
-                    <dt className={theme.hltbLabel}>Main</dt>
-                    <dd className={theme.hltbValue}>{vm.hltbMain}</dd>
-                  </div>
-                  <div className={theme.hltbCard}>
-                    <dt className={theme.hltbLabel}>Extras</dt>
-                    <dd className={theme.hltbValue}>{vm.hltbExtras}</dd>
-                  </div>
-                  <div className={theme.hltbCard}>
-                    <dt className={theme.hltbLabel}>100%</dt>
-                    <dd className={theme.hltbValue}>{vm.hltbCompletionist}</dd>
-                  </div>
-                </dl>
-              </div>
-
+            <div className="order-2 space-y-8 md:order-1 md:col-span-5">
               {vm.platforms.length ? (
                 <div>
                   <h2 className={clsx(theme.fontDisplay, theme.h2)}>Platforms</h2>
@@ -267,9 +265,9 @@ export function GameReviewView({
                             'font-medium underline decoration-transparent underline-offset-4 transition hover:decoration-current',
                             mode === 'light'
                               ? 'text-brand hover:text-brand-hover'
-                              : 'text-[#e8b86d] hover:text-[#ffe7c2]',
+                              : 'text-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]',
                           )}
-                          to={`/g/${pick.slug}`}
+                          to={`/g/${pick.slug}?mode=${mode}`}
                         >
                           {pick.name}
                         </Link>
@@ -289,7 +287,24 @@ export function GameReviewView({
               </div>
             </div>
 
-            <div className="md:col-span-7">
+            <div className="order-1 flex flex-col gap-10 md:order-2 md:col-span-7">
+              <div>
+                <h2 className={clsx(theme.fontDisplay, theme.h2)}>How long to beat</h2>
+                <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                  <div className={theme.hltbCard}>
+                    <dt className={theme.hltbLabel}>Main</dt>
+                    <dd className={theme.hltbValue}>{vm.hltbMain}</dd>
+                  </div>
+                  <div className={theme.hltbCard}>
+                    <dt className={theme.hltbLabel}>Extras</dt>
+                    <dd className={theme.hltbValue}>{vm.hltbExtras}</dd>
+                  </div>
+                  <div className={theme.hltbCard}>
+                    <dt className={theme.hltbLabel}>100%</dt>
+                    <dd className={theme.hltbValue}>{vm.hltbCompletionist}</dd>
+                  </div>
+                </dl>
+              </div>
               <div className={clsx(theme.radarPanel, 'flex min-h-[min(48dvh,520px)] flex-col')}>
                 <div className={theme.radarGlow} />
                 <div className="relative flex min-h-0 min-w-0 flex-1 flex-col p-0">
@@ -307,7 +322,7 @@ export function GameReviewView({
             </div>
           </div>
 
-          <details className={theme.details}>
+          <details className={theme.details} open>
             <summary className={theme.summary}>Pros and cons</summary>
             <div className="mt-4 grid gap-8 md:grid-cols-2 md:gap-10">
               <div>

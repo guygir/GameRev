@@ -36,6 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name,
       subtitle,
       release_label,
+      accent_preset,
       cover_image_url,
       platforms,
       hltb_main_hours,
@@ -67,6 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     name: string
     subtitle: string
     release_label: string | null
+    accent_preset: number | null
     cover_image_url: string | null
     platforms: string[] | null
     hltb_main_hours: number | null
@@ -88,6 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name: row.name,
       subtitle: row.subtitle,
       releaseLabel: row.release_label,
+      accentPreset: row.accent_preset ?? null,
       coverImageUrl: row.cover_image_url,
       platforms: row.platforms ?? [],
       hltbMainHours: row.hltb_main_hours,

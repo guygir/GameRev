@@ -8,6 +8,8 @@ export type AddGameBody = {
   subtitle: string
   /** Month + year label (from IGDB or typed), e.g. "October 2022". */
   releaseLabel: string | null
+  /** Dark review accent: null/omit = auto from slug; 0–4 = fixed presets. */
+  accentPreset?: number | null
   coverImageUrl: string | null
   platforms: string[]
   hltbMainHours: number | null
@@ -84,4 +86,14 @@ export function buildReviewedLookup(rows: { name: string; slug: string }[]): Map
     m.set(r.name.trim().toLowerCase(), { slug: r.slug, name: r.name })
   }
   return m
+}
+
+/** `null` = auto from slug; 0–4 = preset index. Invalid values become null. */
+export function parseAccentPreset(raw: unknown): number | null {
+  if (raw === undefined || raw === null) return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n)) return null
+  const i = Math.floor(n)
+  if (i < 0 || i > 4) return null
+  return i
 }
