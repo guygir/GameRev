@@ -223,7 +223,17 @@ export function AddGamePage() {
     setIgdbErr(null)
     try {
       const res = await fetch(`/api/igdb-genres?q=${encodeURIComponent(q)}`)
-      const json = (await res.json()) as { matches?: IgdbGenreRow[]; error?: string }
+      const raw = await res.text()
+      let json: { matches?: IgdbGenreRow[]; error?: string }
+      try {
+        json = JSON.parse(raw) as { matches?: IgdbGenreRow[]; error?: string }
+      } catch {
+        throw new Error(
+          res.ok
+            ? 'IGDB response was not valid JSON. Check Vercel function logs.'
+            : `IGDB request failed (${res.status}). The server did not return JSON—often an HTML error page. Check Vercel logs and IGDB env vars.`,
+        )
+      }
       if (!res.ok) throw new Error(json.error ?? 'IGDB request failed')
       setIgdbMatches(json.matches ?? [])
     } catch (e) {
