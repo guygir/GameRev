@@ -2,17 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { GameReviewView, type GameReviewViewModel } from '../components/GameReviewView'
 import { CommentsSection } from '../components/CommentsSection'
-import type { CommentRow, GameStats } from '../types/game'
+import type { CommentRow, GameStats, PlayIfLikedStored } from '../types/game'
 import { formatHltbHours } from '../lib/formatHltb'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
-import { parseReviewMode, type ReviewMode } from '../review/getReviewTheme'
-import type { PlayIfLikedStored } from '../types/game'
+import type { ReviewMode } from '../review/getReviewTheme'
+import { formatReviewPublishedLabel } from '../lib/formatReviewPublished'
+import { resolveReviewMode, writeReviewModePreference } from '../lib/reviewModePreference'
 
 type GameJoinRow = {
   id: string
   slug: string
   name: string
   subtitle: string
+  created_at: string
   release_label: string | null
   cover_image_url: string | null
   platforms: string[] | null
@@ -41,7 +43,12 @@ function isGameStats(raw: unknown): raw is GameStats {
 export function GameReviewPage() {
   const { slug } = useParams()
   const [params, setParams] = useSearchParams()
-  const mode = useMemo(() => parseReviewMode(params.get('mode')), [params])
+  const mode = useMemo(() => resolveReviewMode(params.get('mode')), [params])
+
+  useEffect(() => {
+    const q = params.get('mode')
+    if (q === 'dark' || q === 'light') writeReviewModePreference(q)
+  }, [params])
 
   const sb = useMemo(() => getSupabaseBrowser(), [])
 
@@ -70,6 +77,7 @@ export function GameReviewPage() {
           slug,
           name,
           subtitle,
+          created_at,
           release_label,
           cover_image_url,
           platforms,
@@ -117,6 +125,7 @@ export function GameReviewPage() {
         name: row.name,
         subtitle: row.subtitle,
         releaseLabel: row.release_label,
+        publishedAtLabel: formatReviewPublishedLabel(row.created_at),
         coverImageUrl: row.cover_image_url,
         platforms: Array.isArray(row.platforms) ? row.platforms : [],
         hltbMain: formatHltbHours(row.hltb_main_hours),
@@ -156,6 +165,7 @@ export function GameReviewPage() {
 
   const setMode = useCallback(
     (next: ReviewMode) => {
+      writeReviewModePreference(next)
       const nextParams = new URLSearchParams(params)
       nextParams.set('mode', next)
       setParams(nextParams, { replace: true })
@@ -197,7 +207,7 @@ export function GameReviewPage() {
     )
   }
 
-  if (!vm || !gameId) return null
+  if (!vm || !gameId || !slug) return null
 
   return (
     <>
@@ -211,6 +221,18 @@ export function GameReviewPage() {
           { label: vm.name },
         ]}
       />
+      <div className="relative mx-auto max-w-6xl px-4 pb-4 pt-2 md:px-8">
+        <Link
+          to={`/addgame?edit=${encodeURIComponent(slug)}`}
+          className="text-sm font-semibold text-emerald-300/90 underline-offset-4 hover:underline"
+        >
+          Edit this review
+        </Link>
+        <span className="mx-2 text-zinc-600">·</span>
+        <span className="text-xs text-zinc-500">
+          JSON: <span className="font-mono text-zinc-400">/api/review?slug={slug}</span>
+        </span>
+      </div>
       <CommentsSection gameId={gameId} mode={mode} initialComments={comments} />
       <div className="pointer-events-none fixed bottom-24 left-1/2 z-[60] w-[min(92vw,360px)] -translate-x-1/2 text-center">
         <Link

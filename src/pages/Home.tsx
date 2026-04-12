@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { MockNav } from '../components/MockNav'
+import { ReviewModeToggle } from '../components/ReviewModeToggle'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
+import { readReviewModePreference, writeReviewModePreference } from '../lib/reviewModePreference'
+import type { ReviewMode } from '../review/getReviewTheme'
 
 type GameCard = {
   slug: string
@@ -47,6 +51,7 @@ export function Home() {
   const sb = useMemo(() => getSupabaseBrowser(), [])
   const [games, setGames] = useState<GameCard[]>([])
   const [loadErr, setLoadErr] = useState<string | null>(null)
+  const [reviewModePref, setReviewModePref] = useState<ReviewMode>(() => readReviewModePreference())
 
   useEffect(() => {
     if (!sb) return
@@ -68,31 +73,25 @@ export function Home() {
     }
   }, [sb])
 
+  const onReviewModeChange = (next: ReviewMode) => {
+    writeReviewModePreference(next)
+    setReviewModePref(next)
+  }
+
   return (
     <div className="min-h-[100dvh] bg-zinc-950 px-4 py-14 text-zinc-100">
       <div className="mx-auto max-w-3xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">GameRev</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-4xl">GameRev</h1>
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-5">
+          <MockNav crumbs={[{ label: 'Home' }]} className="text-sm text-zinc-400" homeLabel="GameRev" homeTo="/" />
+          <ReviewModeToggle surface="home" mode={reviewModePref} onChange={onReviewModeChange} />
+        </div>
+        <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">GameRev</h1>
         <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-400">
           Long-form reviews with a Pack 1 layout (Fraunces + DM Sans), radar stats, and HowLongToBeat callouts.
         </p>
 
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link
-            to="/review"
-            className="inline-flex rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-300"
-          >
-            Sample review (Signalis)
-          </Link>
-          <Link
-            to="/addgame"
-            className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm font-semibold text-zinc-100 hover:border-emerald-500/40"
-          >
-            Add a game
-          </Link>
-        </div>
-
-        <p className="mt-12 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Reviews</p>
+        <p className="mt-10 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Reviews</p>
+        <p className="mt-1 text-xs text-zinc-600">Newest first.</p>
         {!sb ? (
           <p className="mt-4 text-sm text-zinc-500">
             Set <span className="font-mono">VITE_SUPABASE_URL</span> and{' '}
@@ -107,7 +106,7 @@ export function Home() {
             {games.map((g) => (
               <li key={g.slug}>
                 <Link
-                  to={`/g/${g.slug}`}
+                  to={`/g/${g.slug}?mode=${reviewModePref}`}
                   className="group block overflow-hidden rounded-2xl border border-emerald-500/25 bg-emerald-950/35 transition hover:border-emerald-400/50 hover:bg-emerald-950/50"
                 >
                   <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-stretch">
@@ -131,6 +130,21 @@ export function Home() {
             ))}
           </ul>
         )}
+
+        <div className="mt-10 flex flex-wrap gap-3">
+          <Link
+            to={`/review?mode=${reviewModePref}`}
+            className="inline-flex rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-300"
+          >
+            Sample review (Signalis)
+          </Link>
+          <Link
+            to="/addgame"
+            className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm font-semibold text-zinc-100 hover:border-emerald-500/40"
+          >
+            Add a game
+          </Link>
+        </div>
 
         <p className="mt-14 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Archived mocks</p>
         <ul className="mt-4 space-y-4">

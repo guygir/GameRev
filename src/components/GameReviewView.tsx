@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { GameStats } from '../review/gameStats'
 import { StatRadar } from './StatRadar'
 import { MockNav } from './MockNav'
+import { ReviewModeToggle } from './ReviewModeToggle'
 import { CoverArtAnthropic, CoverArtLight } from './ReviewCovers'
 import { getReviewTheme, type ReviewMode } from '../review/getReviewTheme'
 import clsx from 'clsx'
@@ -12,6 +13,8 @@ export type GameReviewViewModel = {
   subtitle: string
   /** Month + year, e.g. from IGDB; shown under subtitle when set. */
   releaseLabel: string | null
+  /** Long date when the review was first published (`games.created_at`). */
+  publishedAtLabel: string | null
   coverImageUrl: string | null
   platforms: string[]
   hltbMain: string
@@ -88,12 +91,17 @@ export function GameReviewView({
       ) : null}
 
       <div className="relative mx-auto max-w-6xl px-4 pb-28 pt-10 md:px-8">
-        <MockNav
-          crumbs={navCrumbs}
-          className={clsx(theme.fontNav, theme.navMuted)}
-          homeLabel={navHomeLabel}
-          homeTo={navHomeTo}
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <MockNav
+            crumbs={navCrumbs}
+            className={clsx(theme.fontNav, theme.navMuted)}
+            homeLabel={navHomeLabel}
+            homeTo={navHomeTo}
+          />
+          {showModeToggle ? (
+            <ReviewModeToggle mode={mode} onChange={setMode} surface="review" />
+          ) : null}
+        </div>
 
         <header className="mt-10 md:mt-14">
           <p
@@ -122,6 +130,14 @@ export function GameReviewView({
                   style={{ ['--motion-rise-delay' as string]: '240ms' }}
                 >
                   Released {vm.releaseLabel}
+                </p>
+              ) : null}
+              {vm.publishedAtLabel ? (
+                <p
+                  className={clsx('motion-rise mt-1.5 text-sm', theme.fontBody, theme.navMuted)}
+                  style={{ ['--motion-rise-delay' as string]: '280ms' }}
+                >
+                  Review published {vm.publishedAtLabel}
                 </p>
               ) : null}
             </div>
@@ -291,45 +307,6 @@ export function GameReviewView({
         </section>
       </div>
 
-      {showModeToggle ? (
-        <div
-          className={clsx(
-            'fixed bottom-4 left-1/2 z-50 w-[min(92vw,360px)] -translate-x-1/2 rounded-2xl border p-4 shadow-xl backdrop-blur-md',
-            mode === 'light'
-              ? 'border-zinc-200 bg-white/95 text-zinc-900'
-              : 'border-white/10 bg-black/50 text-[#f4e9d8]',
-          )}
-        >
-          <p className="text-center text-xs leading-relaxed text-balance opacity-80">
-            Appearance: light (neutral + brand purple) or editorial dark.
-          </p>
-          <div className="mt-3 flex rounded-xl border border-current/15 p-1">
-            <button
-              type="button"
-              onClick={() => setMode('light')}
-              className={clsx(
-                'flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition',
-                mode === 'light' ? 'bg-brand text-white' : 'opacity-70 hover:opacity-100',
-              )}
-            >
-              Light
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('dark')}
-              className={clsx(
-                'flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition',
-                mode === 'dark' ? 'bg-[#e8b86d] text-[#120d0a]' : 'opacity-70 hover:opacity-100',
-              )}
-            >
-              Dark
-            </button>
-          </div>
-          <p className="mt-2 text-center text-[11px] opacity-60">
-            URL: <span className="font-mono">?mode=light|dark</span>
-          </p>
-        </div>
-      ) : null}
     </div>
   )
 }

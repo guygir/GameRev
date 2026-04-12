@@ -8,6 +8,8 @@ export const mockGame = {
   name: 'Signalis',
   subtitle: 'A survival horror love letter to late PS1 dread',
   releaseLabel: 'October 2022' as const,
+  /** ISO first publish for mock “Review published …” line */
+  reviewPublishedAtIso: '2024-11-03T15:00:00.000Z' as const,
   coverImageUrl: 'https://howlongtobeat.com/games/57149_Signalis.jpg',
   platforms: ['Nintendo Switch', 'PC', 'PlayStation 4', 'Xbox One'] as const,
   hltbMain: '8h',
