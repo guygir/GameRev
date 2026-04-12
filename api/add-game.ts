@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { addGameFromBody } from './lib/addGame'
+import { addGameFromBody } from './lib/addGame.js'
 
 function parseBody(req: VercelRequest): unknown {
   const raw = req.body

@@ -1,6 +1,6 @@
-import type { GameStats } from '../../src/review/gameStats'
-import { statAxes } from '../../src/review/gameStats'
-import type { PlayIfLikedStored } from '../../src/types/game'
+import type { GameStats } from '../../src/review/gameStats.js'
+import { statAxes } from '../../src/review/gameStats.js'
+import type { PlayIfLikedStored } from '../../src/types/game.js'
 
 export type AddGameBody = {
   password: string

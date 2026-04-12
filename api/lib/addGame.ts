@@ -1,5 +1,5 @@
-import { getServiceSupabase } from './supabaseAdmin'
-import { slugify } from './slug'
+import { getServiceSupabase } from './supabaseAdmin.js'
+import { slugify } from './slug.js'
 import {
   buildReviewedLookup,
   normalizePlayIfLiked,
@@ -7,7 +7,7 @@ import {
   parseStats,
   resolvePlayIfLiked,
   type AddGameBody,
-} from './gamePayload'
+} from './gamePayload.js'
 
 type Env = {
   supabaseUrl: string
