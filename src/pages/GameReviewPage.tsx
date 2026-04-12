@@ -219,7 +219,13 @@ export function GameReviewPage() {
   const darkAccentHue = resolveDarkAccentHue(slug, vm.accentPreset ?? null)
 
   return (
-    <>
+    <div
+      className={
+        mode === 'dark'
+          ? 'w-full min-w-0 overflow-x-hidden bg-[#120d0a]'
+          : 'w-full min-w-0 overflow-x-hidden bg-[#f4f4f5]'
+      }
+    >
       <GameReviewView
         vm={vm}
         mode={mode}
@@ -237,6 +243,6 @@ export function GameReviewPage() {
         initialComments={comments}
         darkAccentHue={darkAccentHue}
       />
-    </>
+    </div>
   )
 }

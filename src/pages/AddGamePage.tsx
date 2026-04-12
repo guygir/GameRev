@@ -48,6 +48,18 @@ function isGameStats(raw: unknown): raw is GameStats {
   return true
 }
 
+function looksLikeHowLongToBeatCoverUrl(raw: string | null): boolean {
+  if (!raw?.trim()) return false
+  try {
+    const u = new URL(raw.trim())
+    if (u.protocol !== 'https:') return false
+    const h = u.hostname.toLowerCase()
+    return h === 'howlongtobeat.com' || h.endsWith('.howlongtobeat.com')
+  } catch {
+    return false
+  }
+}
+
 function looksLikeHttpImageUrl(raw: string | null): boolean {
   if (!raw || raw.length > 2048) return false
   try {
@@ -479,21 +491,30 @@ export function AddGamePage() {
     }
     setAccentMsg(null)
     setCoverAccentBusy(true)
+    const hltbCover = looksLikeHowLongToBeatCoverUrl(coverImageUrl)
     try {
       const res = await fetch('/api/sample-cover-accent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: coverImageUrl }),
       })
-      const json = (await res.json()) as { presetIndex?: number; error?: string }
+      const rawText = await res.text()
+      let json: { presetIndex?: number; error?: string } = {}
+      try {
+        json = JSON.parse(rawText) as { presetIndex?: number; error?: string }
+      } catch {
+        /* e.g. HTML error page if /api was rewritten to SPA */
+      }
       if (res.ok && typeof json.presetIndex === 'number' && json.presetIndex >= 0 && json.presetIndex <= 4) {
         setAccentPreset(json.presetIndex)
         return
       }
-      const fallback = await suggestAccentPresetFromCoverUrl(coverImageUrl)
-      if (fallback != null) {
-        setAccentPreset(fallback)
-        return
+      if (!hltbCover) {
+        const fallback = await suggestAccentPresetFromCoverUrl(coverImageUrl)
+        if (fallback != null) {
+          setAccentPreset(fallback)
+          return
+        }
       }
       setAccentMsg(json.error ?? 'Could not sample this cover. Choose a preset manually.')
     } catch {

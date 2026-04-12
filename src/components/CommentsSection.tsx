@@ -66,13 +66,13 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
   return (
     <section
       className={clsx(
-        'w-full pb-32 pt-4',
+        'relative left-1/2 w-[100vw] max-w-[100vw] -translate-x-1/2 pb-32 pt-4',
         theme.fontBody,
         isDark ? 'grain-bg bg-[#120d0a]' : 'bg-[#f4f4f5]',
       )}
       style={isDark ? reviewDarkAccentCssVars(accentHue) : undefined}
     >
-      <div className="mx-auto max-w-6xl px-4 md:px-8">
+      <div className="mx-auto w-full max-w-6xl px-4 md:px-8">
         <div
           className={clsx(
             'rounded-2xl border p-6 md:p-8',
