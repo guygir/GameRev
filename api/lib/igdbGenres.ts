@@ -67,7 +67,7 @@ export async function fetchIgdbGenreMatches(
 
   const safe = query
     .trim()
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\p{Cc}/gu, ' ')
     .replace(/["\\;]/g, '')
     .replace(/\s+/g, ' ')
     .trim()

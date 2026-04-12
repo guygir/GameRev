@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { fetchIgdbGenreMatches } from '../server/igdbGenres'
+import { fetchIgdbGenreMatches } from './lib/igdbGenres'
 
 function firstQueryParam(value: string | string[] | undefined): string {
   if (value == null) return ''
