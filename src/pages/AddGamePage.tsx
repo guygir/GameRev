@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { statAxes, type GameStats } from '../review/gameStats'
+import { statAxes, statAxisTooltips, type GameStats } from '../review/gameStats'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 
 type HltbHit = {
@@ -498,15 +498,17 @@ export function AddGamePage() {
             {statAxes.map((axis) => (
               <label key={axis} className="block text-sm">
                 <span className="text-zinc-300">{axis}</span>
+                <p className="mt-0.5 text-xs leading-snug text-zinc-500">{statAxisTooltips[axis]}</p>
                 <input
                   type="number"
                   min={0}
                   max={100}
                   value={stats[axis]}
+                  title={statAxisTooltips[axis]}
                   onChange={(e) =>
                     setStats((s) => ({ ...s, [axis]: Math.min(100, Math.max(0, Number(e.target.value) || 0)) }))
                   }
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
+                  className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
                 />
               </label>
             ))}

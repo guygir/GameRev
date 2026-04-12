@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
 import { HowLongToBeatService } from '@micamerzeau/howlongtobeat'
 import { addGameFromBody } from '../api/lib/addGame.js'
-import { fetchIgdbGenreMatches } from '../api/lib/igdbGenres.js'
+import { fetchIgdbGenreMatches } from '../api/igdb-genres.js'
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
