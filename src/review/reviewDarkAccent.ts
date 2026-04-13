@@ -39,10 +39,27 @@ export function nearestAccentPresetIndex(hue: number): AccentPresetIndex {
   return best
 }
 
-/** Resolve final hue: DB `accent_preset` null/undefined → slug hash; 0–4 → preset table. */
-export function resolveDarkAccentHue(slug: string, accentPreset: number | null | undefined): number {
-  if (accentPreset == null || Number.isNaN(accentPreset)) return slugToAccentHue(slug)
-  const i = Math.floor(accentPreset)
+export type DarkAccentSource = {
+  /** DB `accent_hue` (0–359). Takes precedence over legacy preset. */
+  accentHue?: number | null
+  /** Legacy DB `accent_preset` (0–4) when `accent_hue` is unset. */
+  accentPreset?: number | null
+}
+
+function normalizeStoredHue(v: unknown): number | null {
+  if (v == null || typeof v !== 'number' || Number.isNaN(v)) return null
+  let h = Math.round(v) % 360
+  if (h < 0) h += 360
+  return h
+}
+
+/** Final dark accent: stored hue → legacy preset → slug hash. */
+export function resolveDarkAccentHue(slug: string, source?: DarkAccentSource | null): number {
+  const fromHue = normalizeStoredHue(source?.accentHue)
+  if (fromHue != null) return fromHue
+  const preset = source?.accentPreset
+  if (preset == null || Number.isNaN(preset)) return slugToAccentHue(slug)
+  const i = Math.floor(preset)
   if (i < 0 || i >= ACCENT_PRESET_HUES.length) return slugToAccentHue(slug)
   return ACCENT_PRESET_HUES[i as AccentPresetIndex]
 }
@@ -99,6 +116,40 @@ export function reviewDarkAccentCssVars(hue: number): CSSProperties {
     '--review-accent-glow-2': `hsl(${(h + 148) % 360} 42% 38% / 0.2)`,
     '--review-accent-border': `hsl(${h} 42% 42% / 0.42)`,
     '--review-accent-surface': `hsl(${h} 28% 16% / 0.38)`,
+  } as CSSProperties
+}
+
+export type HomeCatalogSurface = 'dark' | 'light'
+
+/**
+ * Home review list cards: same HSL recipe as dark review accents (saturation/lightness), hue from the game.
+ * Keeps a soft “glow” via translucent surfaces + hover shadow.
+ */
+export function homeCatalogCardCssVars(hue: number, surface: HomeCatalogSurface): CSSProperties {
+  const h = ((hue % 360) + 360) % 360
+  if (surface === 'dark') {
+    return {
+      '--home-catalog-border': `hsl(${h} 42% 42% / 0.36)`,
+      '--home-catalog-border-hover': `hsl(${h} 56% 58% / 0.55)`,
+      '--home-catalog-surface': `hsl(${h} 28% 16% / 0.42)`,
+      '--home-catalog-surface-hover': `hsl(${h} 30% 18% / 0.54)`,
+      '--home-catalog-thumb-border': `hsl(${h} 40% 40% / 0.32)`,
+      '--home-catalog-title-hover': `hsl(${h} 70% 80%)`,
+      '--home-catalog-subtitle': `hsl(${h} 38% 74% / 0.8)`,
+      '--home-catalog-cta': `hsl(${h} 65% 72% / 0.92)`,
+      '--home-catalog-glow': `hsl(${h} 52% 52% / 0.28)`,
+    } as CSSProperties
+  }
+  return {
+    '--home-catalog-border': `hsl(${h} 28% 90% / 1)`,
+    '--home-catalog-border-hover': `hsl(${h} 42% 72% / 0.55)`,
+    '--home-catalog-surface': '#ffffff',
+    '--home-catalog-surface-hover': '#ffffff',
+    '--home-catalog-thumb-border': `hsl(${h} 24% 91% / 1)`,
+    '--home-catalog-title-hover': `hsl(${h} 42% 36%)`,
+    '--home-catalog-subtitle': `hsl(${h} 18% 42% / 0.9)`,
+    '--home-catalog-cta': `hsl(${h} 44% 40%)`,
+    '--home-catalog-glow': `hsl(${h} 55% 54% / 0.22)`,
   } as CSSProperties
 }
 

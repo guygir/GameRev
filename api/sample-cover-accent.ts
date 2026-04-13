@@ -32,5 +32,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(422).json({ error: out.error })
     return
   }
-  res.status(200).json({ presetIndex: out.presetIndex })
+  res.status(200).json({ hue: out.hue })
 }

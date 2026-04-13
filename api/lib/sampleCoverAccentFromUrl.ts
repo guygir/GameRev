@@ -1,5 +1,5 @@
 import jpeg from 'jpeg-js'
-import { presetIndexFromImageData } from './coverAccentPixelsNode.js'
+import { dominantHueFromImageData } from './coverAccentPixelsNode.js'
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -17,7 +17,7 @@ function isAllowedCoverUrl(url: string): boolean {
 
 export async function sampleCoverAccentFromUrl(
   rawUrl: string,
-): Promise<{ ok: true; presetIndex: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; hue: number } | { ok: false; error: string }> {
   const url = rawUrl.trim()
   if (!url) return { ok: false, error: 'Missing url' }
   if (url.length > 2048) return { ok: false, error: 'URL too long' }
@@ -45,9 +45,9 @@ export async function sampleCoverAccentFromUrl(
     if (!decoded?.data?.length || decoded.width < 2 || decoded.height < 2) {
       return { ok: false, error: 'Could not decode JPEG.' }
     }
-    const idx = presetIndexFromImageData(decoded.data, decoded.width, decoded.height)
-    if (idx == null) return { ok: false, error: 'No strong colors found; pick a preset manually.' }
-    return { ok: true, presetIndex: idx }
+    const hue = dominantHueFromImageData(decoded.data, decoded.width, decoded.height)
+    if (hue == null) return { ok: false, error: 'No strong colors found; set a hue manually.' }
+    return { ok: true, hue }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Request failed'
     if (/abort/i.test(msg)) return { ok: false, error: 'Cover fetch timed out.' }

@@ -3,8 +3,8 @@ import {
   buildReviewedLookup,
   normalizePlayIfLiked,
   normalizeStringList,
-  parseAccentPreset,
   parseStats,
+  resolveAccentHueFromBody,
   resolvePlayIfLiked,
   type AddGameBody,
 } from './gamePayload.js'
@@ -62,8 +62,9 @@ export async function updateGameFromBody(
   const stats = parseStats(b.stats)
   if (!stats) return { ok: false, status: 400, error: 'Invalid stats (need 0–100 per axis)' }
 
-  const shouldPatchAccent = Object.prototype.hasOwnProperty.call(b, 'accentPreset')
-  const accentPresetValue = shouldPatchAccent ? parseAccentPreset(b.accentPreset) : undefined
+  const shouldPatchAccent =
+    Object.prototype.hasOwnProperty.call(b, 'accentHue') ||
+    Object.prototype.hasOwnProperty.call(b, 'accentPreset')
 
   const platforms = normalizeStringList(b.platforms, 24, 48)
   const genres = normalizeStringList(b.genres, 24, 80)
@@ -111,6 +112,10 @@ export async function updateGameFromBody(
   const { error: delT } = await sb.from('game_tags').delete().eq('game_id', gameId)
   if (delT) return { ok: false, status: 500, error: delT.message }
 
+  const accentRowPatch = shouldPatchAccent
+    ? { accent_hue: resolveAccentHueFromBody(b) as number | null, accent_preset: null as null }
+    : {}
+
   const { error: updErr } = await sb
     .from('games')
     .update({
@@ -126,7 +131,7 @@ export async function updateGameFromBody(
       pros,
       cons,
       play_if_liked,
-      ...(shouldPatchAccent ? { accent_preset: accentPresetValue } : {}),
+      ...accentRowPatch,
     })
     .eq('id', gameId)
 

@@ -1,5 +1,6 @@
 import type { GameStats } from '../../src/review/gameStats.js'
 import { statAxes } from '../../src/review/gameStats.js'
+import { ACCENT_PRESET_HUES } from '../../src/review/reviewDarkAccent.js'
 import type { PlayIfLikedStored } from '../../src/types/game.js'
 
 export type AddGameBody = {
@@ -8,7 +9,9 @@ export type AddGameBody = {
   subtitle: string
   /** Month + year label (from IGDB or typed), e.g. "October 2022". */
   releaseLabel: string | null
-  /** Dark review accent: null/omit = auto from slug; 0–4 = fixed presets. */
+  /** Dark review leading hue 0–359; null/omit = auto from slug. */
+  accentHue?: number | null
+  /** @deprecated Prefer accentHue; 0–4 maps to fixed hues on save. */
   accentPreset?: number | null
   coverImageUrl: string | null
   platforms: string[]
@@ -96,4 +99,28 @@ export function parseAccentPreset(raw: unknown): number | null {
   const i = Math.floor(n)
   if (i < 0 || i > 4) return null
   return i
+}
+
+/** Integer hue 0–359, or null = auto. */
+export function parseAccentHue(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n)) return null
+  let h = Math.round(n) % 360
+  if (h < 0) h += 360
+  return h
+}
+
+/**
+ * Resolves `accent_hue` for DB. Prefers `accentHue` over legacy `accentPreset`.
+ * Returns `undefined` when neither field is present (update: do not patch accent).
+ */
+export function resolveAccentHueFromBody(b: Partial<AddGameBody>): number | null | undefined {
+  const hasHue = Object.prototype.hasOwnProperty.call(b, 'accentHue')
+  const hasPreset = Object.prototype.hasOwnProperty.call(b, 'accentPreset')
+  if (!hasHue && !hasPreset) return undefined
+  if (hasHue) return parseAccentHue(b.accentHue)
+  const p = parseAccentPreset(b.accentPreset)
+  if (p == null) return null
+  return ACCENT_PRESET_HUES[p]
 }

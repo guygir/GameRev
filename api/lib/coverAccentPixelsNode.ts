@@ -1,23 +1,4 @@
-/** Mirrors `src/lib/coverAccentPresetFromPixels.ts` for Node (Vercel) without importing app `src/`. */
-const PRESET_HUES = [38, 198, 268, 145, 328] as const
-
-function hueDistance(a: number, b: number): number {
-  const d = Math.abs(a - b)
-  return Math.min(d, 360 - d)
-}
-
-function nearestAccentPresetIndex(hue: number): number {
-  let best = 0
-  let bestD = Infinity
-  for (let i = 0; i < PRESET_HUES.length; i++) {
-    const d = hueDistance(hue, PRESET_HUES[i]!)
-    if (d < bestD) {
-      bestD = d
-      best = i
-    }
-  }
-  return best
-}
+/** Dominant hue from JPEG pixels — Node-only for `/api/sample-cover-accent` (Vercel). */
 
 function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
   const rn = r / 255
@@ -45,7 +26,8 @@ function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: n
   return { h: h * 360, s, l }
 }
 
-export function presetIndexFromImageData(
+/** Center of the strongest 10° hue bin (0–359), or null if no saturated color. */
+export function dominantHueFromImageData(
   data: Uint8Array | Uint8ClampedArray,
   width: number,
   height: number,
@@ -75,6 +57,5 @@ export function presetIndexFromImageData(
     }
   }
   if (bestW <= 0) return null
-  const dominantHue = bestBin * 10 + 5
-  return nearestAccentPresetIndex(dominantHue)
+  return bestBin * 10 + 5
 }

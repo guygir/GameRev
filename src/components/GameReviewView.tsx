@@ -31,7 +31,9 @@ export type GameReviewViewModel = {
   cons: string[]
   stats: GameStats
   radarLabel: string
-  /** Saved preset index (0–4) or null = auto from slug; used for dark accent only. */
+  /** DB `accent_hue` (0–359); null if unset. */
+  accentHue: number | null
+  /** Legacy `accent_preset` (0–4) when `accent_hue` is null. */
   accentPreset: number | null
 }
 

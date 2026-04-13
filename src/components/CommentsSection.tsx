@@ -66,7 +66,7 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
   return (
     <section
       className={clsx(
-        'relative left-1/2 w-[100vw] max-w-[100vw] -translate-x-1/2 pb-32 pt-4',
+        'w-full pb-32 pt-4',
         theme.fontBody,
         isDark ? 'grain-bg bg-[#120d0a]' : 'bg-[#f4f4f5]',
       )}

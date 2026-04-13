@@ -17,6 +17,7 @@ type GameJoinRow = {
   subtitle: string
   created_at: string
   release_label: string | null
+  accent_hue?: number | null
   accent_preset?: number | null
   cover_image_url: string | null
   platforms: string[] | null
@@ -81,6 +82,7 @@ export function GameReviewPage() {
           subtitle,
           created_at,
           release_label,
+          accent_hue,
           accent_preset,
           cover_image_url,
           platforms,
@@ -141,6 +143,10 @@ export function GameReviewPage() {
         cons: row.cons ?? [],
         stats: row.stats,
         radarLabel: `${row.name} review stats radar chart`,
+        accentHue:
+          typeof row.accent_hue === 'number' && row.accent_hue >= 0 && row.accent_hue < 360
+            ? Math.round(row.accent_hue)
+            : null,
         accentPreset:
           typeof row.accent_preset === 'number' && row.accent_preset >= 0 && row.accent_preset <= 4
             ? row.accent_preset
@@ -216,7 +222,10 @@ export function GameReviewPage() {
 
   if (!vm || !gameId || !slug) return null
 
-  const darkAccentHue = resolveDarkAccentHue(slug, vm.accentPreset ?? null)
+  const darkAccentHue = resolveDarkAccentHue(slug, {
+    accentHue: vm.accentHue,
+    accentPreset: vm.accentPreset,
+  })
 
   return (
     <div

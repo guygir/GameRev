@@ -159,7 +159,7 @@ function installApiRoutes(
           sendJson(res, 422, { error: out.error })
           return
         }
-        sendJson(res, 200, { presetIndex: out.presetIndex })
+        sendJson(res, 200, { hue: out.hue })
         return
       }
 
@@ -183,6 +183,7 @@ function installApiRoutes(
             name,
             subtitle,
             release_label,
+            accent_hue,
             accent_preset,
             cover_image_url,
             platforms,
@@ -213,6 +214,7 @@ function installApiRoutes(
           name: string
           subtitle: string
           release_label: string | null
+          accent_hue: number | null
           accent_preset: number | null
           cover_image_url: string | null
           platforms: string[] | null
@@ -234,6 +236,7 @@ function installApiRoutes(
             name: row.name,
             subtitle: row.subtitle,
             releaseLabel: row.release_label,
+            accentHue: row.accent_hue ?? null,
             accentPreset: row.accent_preset ?? null,
             coverImageUrl: row.cover_image_url,
             platforms: row.platforms ?? [],

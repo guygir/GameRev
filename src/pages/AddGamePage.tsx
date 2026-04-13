@@ -3,8 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { MockNav } from '../components/MockNav'
 import { statAxes, statAxisTooltips, type GameStats } from '../review/gameStats'
-import { ACCENT_PRESET_HUES, ACCENT_PRESET_LABELS } from '../review/reviewDarkAccent'
-import { suggestAccentPresetFromCoverUrl } from '../lib/suggestAccentPresetFromCover'
+import {
+  ACCENT_PRESET_HUES,
+  ACCENT_PRESET_LABELS,
+  DEFAULT_DARK_REVIEW_ACCENT_HUE,
+} from '../review/reviewDarkAccent'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference } from '../lib/reviewModePreference'
 
@@ -46,18 +49,6 @@ function isGameStats(raw: unknown): raw is GameStats {
     if (typeof v !== 'number' || Number.isNaN(v)) return false
   }
   return true
-}
-
-function looksLikeHowLongToBeatCoverUrl(raw: string | null): boolean {
-  if (!raw?.trim()) return false
-  try {
-    const u = new URL(raw.trim())
-    if (u.protocol !== 'https:') return false
-    const h = u.hostname.toLowerCase()
-    return h === 'howlongtobeat.com' || h.endsWith('.howlongtobeat.com')
-  } catch {
-    return false
-  }
 }
 
 function looksLikeHttpImageUrl(raw: string | null): boolean {
@@ -124,8 +115,8 @@ export function AddGamePage() {
   const [reviewPlatforms, setReviewPlatforms] = useState<string[]>([])
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null)
   const [coverPreviewFailed, setCoverPreviewFailed] = useState(false)
-  /** null = auto (slug hash); 0–4 = fixed presets for dark review accent. */
-  const [accentPreset, setAccentPreset] = useState<number | null>(null)
+  /** null = auto (slug hash); 0–359 = saved dark accent hue. */
+  const [accentHue, setAccentHue] = useState<number | null>(null)
   const [accentMsg, setAccentMsg] = useState<string | null>(null)
   const [coverAccentBusy, setCoverAccentBusy] = useState(false)
   const [hltbMainHours, setHltbMainHours] = useState<number | null>(null)
@@ -169,7 +160,7 @@ export function AddGamePage() {
     setReviewPlatforms([])
     setCoverImageUrl(null)
     setCoverPreviewFailed(false)
-    setAccentPreset(null)
+    setAccentHue(null)
     setAccentMsg(null)
     setCoverAccentBusy(false)
     setHltbMainHours(null)
@@ -235,6 +226,7 @@ export function AddGamePage() {
         name: string
         subtitle: string
         release_label: string | null
+        accent_hue?: number | null
         accent_preset?: number | null
         cover_image_url: string | null
         platforms: string[] | null
@@ -255,6 +247,7 @@ export function AddGamePage() {
           name,
           subtitle,
           release_label,
+          accent_hue,
           accent_preset,
           cover_image_url,
           platforms,
@@ -287,10 +280,13 @@ export function AddGamePage() {
       setSubtitle(row.subtitle)
       setReleaseLabel(row.release_label?.trim() ?? '')
       setCoverImageUrl(row.cover_image_url)
-      const ap = row.accent_preset
-      setAccentPreset(
-        typeof ap === 'number' && ap >= 0 && ap <= 4 ? ap : null,
-      )
+      let ah: number | null = null
+      if (typeof row.accent_hue === 'number' && row.accent_hue >= 0 && row.accent_hue < 360) {
+        ah = Math.round(row.accent_hue)
+      } else if (typeof row.accent_preset === 'number' && row.accent_preset >= 0 && row.accent_preset <= 4) {
+        ah = ACCENT_PRESET_HUES[row.accent_preset]
+      }
+      setAccentHue(ah)
       setReviewPlatforms(Array.isArray(row.platforms) ? [...row.platforms] : [])
       setHltbMainHours(row.hltb_main_hours)
       setHltbExtrasHours(row.hltb_extras_hours)
@@ -491,7 +487,6 @@ export function AddGamePage() {
     }
     setAccentMsg(null)
     setCoverAccentBusy(true)
-    const hltbCover = looksLikeHowLongToBeatCoverUrl(coverImageUrl)
     try {
       const res = await fetch('/api/sample-cover-accent', {
         method: 'POST',
@@ -499,26 +494,21 @@ export function AddGamePage() {
         body: JSON.stringify({ url: coverImageUrl }),
       })
       const rawText = await res.text()
-      let json: { presetIndex?: number; error?: string } = {}
+      let json: { hue?: number; error?: string } = {}
       try {
-        json = JSON.parse(rawText) as { presetIndex?: number; error?: string }
+        json = JSON.parse(rawText) as { hue?: number; error?: string }
       } catch {
-        /* e.g. HTML error page if /api was rewritten to SPA */
+        /* e.g. HTML if /api was rewritten to index.html — fix vercel.json */
       }
-      if (res.ok && typeof json.presetIndex === 'number' && json.presetIndex >= 0 && json.presetIndex <= 4) {
-        setAccentPreset(json.presetIndex)
+      if (res.ok && typeof json.hue === 'number' && Number.isFinite(json.hue)) {
+        let h = Math.round(json.hue) % 360
+        if (h < 0) h += 360
+        setAccentHue(h)
         return
       }
-      if (!hltbCover) {
-        const fallback = await suggestAccentPresetFromCoverUrl(coverImageUrl)
-        if (fallback != null) {
-          setAccentPreset(fallback)
-          return
-        }
-      }
-      setAccentMsg(json.error ?? 'Could not sample this cover. Choose a preset manually.')
+      setAccentMsg(json.error ?? 'Could not sample this cover. Set a hue manually.')
     } catch {
-      setAccentMsg('Could not sample this cover. Choose a preset manually.')
+      setAccentMsg('Could not sample this cover. Set a hue manually.')
     } finally {
       setCoverAccentBusy(false)
     }
@@ -553,7 +543,7 @@ export function AddGamePage() {
         pros: linesToList(prosText),
         cons: linesToList(consText),
         playIfLiked,
-        accentPreset,
+        accentHue,
         ...(loadReviewSlug ? { slug: loadReviewSlug } : {}),
       }
       const url = loadReviewSlug ? '/api/update-game' : '/api/add-game'
@@ -565,8 +555,8 @@ export function AddGamePage() {
       const json = (await res.json()) as { slug?: string; error?: string }
       if (!res.ok) {
         const hint =
-          /platforms|release_label|accent_preset|schema cache/i.test(json.error ?? '')
-            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql` and `20260414120000_accent_preset.sql`.'
+          /platforms|release_label|accent_preset|accent_hue|schema cache/i.test(json.error ?? '')
+            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, and `20260415120000_accent_hue.sql`.'
             : ''
         throw new Error((json.error ?? 'Save failed') + hint)
       }
@@ -580,7 +570,7 @@ export function AddGamePage() {
       setSubmitBusy(false)
     }
   }, [
-    accentPreset,
+    accentHue,
     consText,
     coverImageUrl,
     editLoadError,
@@ -764,45 +754,93 @@ export function AddGamePage() {
           <div className="mt-6 rounded-lg border border-zinc-700/80 bg-zinc-950/50 p-4">
             <p className="text-sm font-medium text-zinc-200">Dark mode leading color</p>
             <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-              Shown when the review uses dark appearance. <span className="text-zinc-400">Auto</span> derives a stable hue
-              from the URL slug. Presets fix the hue so you can compare looks.
+              Shown in dark review mode. <span className="text-zinc-400">Auto</span> uses a stable hue from the URL slug.
+              <span className="text-zinc-400"> Custom</span> saves the exact hue (0–359°); the review reuses the same HSL
+              recipe as always, so every game can have its own accent.
             </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
                 <input
                   type="radio"
-                  name="accentPreset"
+                  name="accentHueMode"
                   className="border-zinc-600 text-emerald-500 focus:ring-emerald-500/40"
-                  checked={accentPreset === null}
+                  checked={accentHue === null}
                   onChange={() => {
-                    setAccentPreset(null)
+                    setAccentHue(null)
                     setAccentMsg(null)
                   }}
                 />
                 Auto (from slug)
               </label>
-              {ACCENT_PRESET_LABELS.map((label, i) => (
-                <label key={label} className="flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
+                <input
+                  type="radio"
+                  name="accentHueMode"
+                  className="border-zinc-600 text-emerald-500 focus:ring-emerald-500/40"
+                  checked={accentHue !== null}
+                  onChange={() => {
+                    setAccentHue((h) => (h == null ? DEFAULT_DARK_REVIEW_ACCENT_HUE : h))
+                    setAccentMsg(null)
+                  }}
+                />
+                Custom hue
+              </label>
+            </div>
+            {accentHue !== null ? (
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <input
-                    type="radio"
-                    name="accentPreset"
-                    className="border-zinc-600 text-emerald-500 focus:ring-emerald-500/40"
-                    checked={accentPreset === i}
-                    onChange={() => {
-                      setAccentPreset(i)
+                    type="range"
+                    min={0}
+                    max={359}
+                    value={accentHue}
+                    onChange={(e) => {
+                      setAccentHue(Number(e.target.value))
                       setAccentMsg(null)
                     }}
+                    className="h-2 min-w-[min(100%,12rem)] flex-1 cursor-pointer accent-emerald-500"
                   />
-                  <span
-                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/15"
-                    style={{ backgroundColor: `hsl(${ACCENT_PRESET_HUES[i]} 58% 52%)` }}
-                    aria-hidden
+                  <input
+                    type="number"
+                    min={0}
+                    max={359}
+                    value={accentHue}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      if (!Number.isFinite(v)) return
+                      let h = Math.round(v) % 360
+                      if (h < 0) h += 360
+                      setAccentHue(h)
+                      setAccentMsg(null)
+                    }}
+                    className="w-16 rounded border border-zinc-600 bg-zinc-950 px-2 py-1 text-center text-sm text-zinc-200"
                   />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-zinc-500">°</span>
+                </div>
+                <p className="text-xs text-zinc-500">Shortcuts (editorial picks):</p>
+                <div className="flex flex-wrap gap-2">
+                  {ACCENT_PRESET_LABELS.map((label, i) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        setAccentHue(ACCENT_PRESET_HUES[i])
+                        setAccentMsg(null)
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-zinc-600 px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-900"
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full ring-1 ring-white/15"
+                        style={{ backgroundColor: `hsl(${ACCENT_PRESET_HUES[i]} 58% 52%)` }}
+                        aria-hidden
+                      />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => void suggestCoverAccent()}
@@ -812,11 +850,39 @@ export function AddGamePage() {
                 {coverAccentBusy ? 'Sampling cover…' : 'Suggest from cover'}
               </button>
               <span className="text-xs text-zinc-500">
-                HowLongToBeat covers use the server (no CORS in the browser). Other hosts may fall back to canvas
-                when allowed.
+                Server reads the HowLongToBeat JPEG and sets <span className="text-zinc-400">custom hue</span> to the
+                dominant color (not Auto).
               </span>
             </div>
             {accentMsg ? <p className="mt-2 text-xs text-amber-200/90">{accentMsg}</p> : null}
+            {accentHue !== null ? (
+              <div className="mt-3 flex items-center gap-3 rounded-lg border border-zinc-700/60 bg-zinc-950/80 px-3 py-2.5">
+                <div
+                  className="h-11 w-11 shrink-0 rounded-lg ring-2 ring-white/10"
+                  style={{
+                    backgroundColor: `hsl(${accentHue} 56% 52%)`,
+                    boxShadow: `0 0 24px hsl(${accentHue} 50% 45% / 0.35)`,
+                  }}
+                  aria-hidden
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-zinc-100">
+                    Saved accent preview
+                    <span className="ml-2 font-normal text-zinc-500">custom hue</span>
+                  </p>
+                  <p className="mt-0.5 font-mono text-xs text-zinc-400">
+                    <span className="text-zinc-300">{accentHue}°</span>
+                    <span className="text-zinc-600"> — </span>
+                    <span className="text-zinc-500">hsl({accentHue} 56% 52%)</span>
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs leading-relaxed text-zinc-600">
+                <span className="text-zinc-500">Auto:</span> dark accent comes from the slug when you save (see the live
+                review).
+              </p>
+            )}
           </div>
 
           <label className="mt-4 block text-sm font-medium text-zinc-300">

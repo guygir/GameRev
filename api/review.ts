@@ -36,6 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name,
       subtitle,
       release_label,
+      accent_hue,
       accent_preset,
       cover_image_url,
       platforms,
@@ -68,6 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     name: string
     subtitle: string
     release_label: string | null
+    accent_hue: number | null
     accent_preset: number | null
     cover_image_url: string | null
     platforms: string[] | null
@@ -90,6 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name: row.name,
       subtitle: row.subtitle,
       releaseLabel: row.release_label,
+      accentHue: row.accent_hue ?? null,
       accentPreset: row.accent_preset ?? null,
       coverImageUrl: row.cover_image_url,
       platforms: row.platforms ?? [],
