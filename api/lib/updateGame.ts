@@ -1,3 +1,4 @@
+import { parseCatalogRankPosition, persistCatalogOrder } from './catalogRank.js'
 import { getServiceSupabase } from './supabaseAdmin.js'
 import {
   buildReviewedLookup,
@@ -145,6 +146,32 @@ export async function updateGameFromBody(
     const { error } = await sb.from('game_tags').insert(tags.map((tag) => ({ game_id: gameId, tag })))
     if (error) return { ok: false, status: 500, error: error.message }
   }
+
+  const { data: rankRows, error: rankListErr } = await sb
+    .from('games')
+    .select('id')
+    .order('catalog_rank', { ascending: true })
+  if (rankListErr) return { ok: false, status: 500, error: rankListErr.message }
+  const orderedIds = (rankRows ?? []).map((r) => r.id as string)
+  const n = orderedIds.length
+  if (n === 0) return { ok: true, slug }
+
+  const newPos = parseCatalogRankPosition(b.catalogRank, 1, n)
+  if (newPos == null) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Invalid catalogRank: choose a position from 1 (first) through ${n} (last).`,
+    }
+  }
+
+  const without = orderedIds.filter((id) => id !== gameId)
+  if (without.length !== n - 1) {
+    return { ok: false, status: 500, error: 'Catalog order is inconsistent with this review.' }
+  }
+  const nextOrder = [...without.slice(0, newPos - 1), gameId, ...without.slice(newPos - 1)]
+  const orderOut = await persistCatalogOrder(sb, nextOrder)
+  if (!orderOut.ok) return { ok: false, status: 500, error: orderOut.error }
 
   return { ok: true, slug }
 }

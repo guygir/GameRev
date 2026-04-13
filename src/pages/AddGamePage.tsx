@@ -68,6 +68,8 @@ type IgdbGenreRow = {
   releaseLabel: string | null
 }
 
+type CatalogRankedGame = { name: string; slug: string; catalog_rank: number }
+
 function ChipToggle({
   label,
   active,
@@ -101,6 +103,8 @@ export function AddGamePage() {
   const [poolGenres, setPoolGenres] = useState<string[]>([])
   const [poolTags, setPoolTags] = useState<string[]>([])
   const [reviewedGames, setReviewedGames] = useState<{ name: string; slug: string }[]>([])
+  const [rankedCatalogGames, setRankedCatalogGames] = useState<CatalogRankedGame[]>([])
+  const [catalogRankPosition, setCatalogRankPosition] = useState<number | null>(null)
 
   const [name, setName] = useState('')
   const [subtitle, setSubtitle] = useState('')
@@ -146,6 +150,8 @@ export function AddGamePage() {
 
   /** Tracks last loaded edit slug so we only reset the form when switching away from an edit, not on first paint. */
   const lastLoadedEditSlugRef = useRef<string>('')
+  /** New-review default: first time the catalog has rows, default to last slot (append). */
+  const catalogDefaultAppendDoneRef = useRef(false)
 
   const resetNewReviewForm = useCallback(() => {
     setName('')
@@ -180,7 +186,9 @@ export function AddGamePage() {
     setConsText('')
     setSubmitStatus(null)
     setSavedSlug(null)
-  }, [])
+    catalogDefaultAppendDoneRef.current = true
+    setCatalogRankPosition(rankedCatalogGames.length > 0 ? rankedCatalogGames.length + 1 : 1)
+  }, [rankedCatalogGames])
 
   useEffect(() => {
     const client = sb
@@ -191,18 +199,35 @@ export function AddGamePage() {
       const [gRes, tRes, gamesRes] = await Promise.all([
         client.from('genres').select('name').order('name'),
         client.from('tags').select('name').order('name'),
-        client.from('games').select('name, slug').order('name'),
+        client.from('games').select('name, slug, catalog_rank').order('name'),
       ])
       if (cancelled) return
       setPoolGenres((gRes.data ?? []).map((r) => r.name as string))
       setPoolTags((tRes.data ?? []).map((r) => r.name as string))
-      setReviewedGames((gamesRes.data ?? []) as { name: string; slug: string }[])
+      const gameRows = (gamesRes.data ?? []) as CatalogRankedGame[]
+      setReviewedGames(gameRows.map(({ name, slug }) => ({ name, slug })))
+      setRankedCatalogGames([...gameRows].sort((a, b) => a.catalog_rank - b.catalog_rank))
     }
     void loadPools()
     return () => {
       cancelled = true
     }
   }, [sb])
+
+  useEffect(() => {
+    if (loadReviewSlug) return
+    const n = rankedCatalogGames.length
+    const max = n > 0 ? n + 1 : 1
+    if (!catalogDefaultAppendDoneRef.current && n > 0) {
+      catalogDefaultAppendDoneRef.current = true
+      setCatalogRankPosition(max)
+      return
+    }
+    setCatalogRankPosition((p) => {
+      if (p == null) return max
+      return Math.min(Math.max(1, p), max)
+    })
+  }, [loadReviewSlug, rankedCatalogGames])
 
   useEffect(() => {
     if (!sb) return
@@ -221,10 +246,12 @@ export function AddGamePage() {
       setSubmitStatus(null)
       setSavedSlug(null)
       setAccentMsg(null)
+      setCatalogRankPosition(null)
     void (async () => {
       type GameEditRow = {
         name: string
         subtitle: string
+        catalog_rank: number
         release_label: string | null
         accent_hue?: number | null
         accent_preset?: number | null
@@ -246,6 +273,7 @@ export function AddGamePage() {
           `
           name,
           subtitle,
+          catalog_rank,
           release_label,
           accent_hue,
           accent_preset,
@@ -278,6 +306,9 @@ export function AddGamePage() {
       const row = data as GameEditRow
       setName(row.name)
       setSubtitle(row.subtitle)
+      setCatalogRankPosition(
+        typeof row.catalog_rank === 'number' && row.catalog_rank >= 1 ? row.catalog_rank : 1,
+      )
       setReleaseLabel(row.release_label?.trim() ?? '')
       setCoverImageUrl(row.cover_image_url)
       let ah: number | null = null
@@ -387,6 +418,30 @@ export function AddGamePage() {
   }, [])
 
   const extSearchQ = useCallback(() => (extGenreQuery.trim() || name.trim()), [extGenreQuery, name])
+
+  const rankSelectOptions = useMemo(() => {
+    if (loadReviewSlug) {
+      return rankedCatalogGames.map((g, i) => ({
+        value: i + 1,
+        label: `${i + 1}. ${g.name}${g.slug === loadReviewSlug ? ' (this review)' : ''}`,
+      }))
+    }
+    if (rankedCatalogGames.length === 0) {
+      return [{ value: 1, label: '1 — First review on the site' }]
+    }
+    const out: { value: number; label: string }[] = []
+    out.push({ value: 1, label: `1 — First (before “${rankedCatalogGames[0].name}”)` })
+    for (let i = 1; i < rankedCatalogGames.length; i++) {
+      const after = rankedCatalogGames[i - 1]
+      out.push({ value: i + 1, label: `${i + 1} — After “${after.name}”` })
+    }
+    const last = rankedCatalogGames[rankedCatalogGames.length - 1]
+    out.push({
+      value: rankedCatalogGames.length + 1,
+      label: `${rankedCatalogGames.length + 1} — Last (after “${last.name}”)`,
+    })
+    return out
+  }, [loadReviewSlug, rankedCatalogGames])
 
   const runIgdbSearch = useCallback(async (explicitQuery: string) => {
     const q = explicitQuery.trim()
@@ -524,6 +579,15 @@ export function AddGamePage() {
       setSubmitStatus('Wait for the review to finish loading, or fix the load error above.')
       return
     }
+    if (catalogRankPosition == null || !Number.isInteger(catalogRankPosition)) {
+      setSubmitStatus('Choose a catalog rank (wait for the list to load if needed).')
+      return
+    }
+    const maxRank = loadReviewSlug ? rankedCatalogGames.length : rankedCatalogGames.length + 1
+    if (catalogRankPosition < 1 || catalogRankPosition > maxRank) {
+      setSubmitStatus('Catalog rank is out of range—reload the page and pick a position again.')
+      return
+    }
     setSubmitBusy(true)
     try {
       const playIfLiked = linesToList(playIfLikedText).map((n) => ({ name: n }))
@@ -544,6 +608,7 @@ export function AddGamePage() {
         cons: linesToList(consText),
         playIfLiked,
         accentHue,
+        catalogRank: catalogRankPosition,
         ...(loadReviewSlug ? { slug: loadReviewSlug } : {}),
       }
       const url = loadReviewSlug ? '/api/update-game' : '/api/add-game'
@@ -555,8 +620,8 @@ export function AddGamePage() {
       const json = (await res.json()) as { slug?: string; error?: string }
       if (!res.ok) {
         const hint =
-          /platforms|release_label|accent_preset|accent_hue|schema cache/i.test(json.error ?? '')
-            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, and `20260415120000_accent_hue.sql`.'
+          /platforms|release_label|accent_preset|accent_hue|catalog_rank|schema cache/i.test(json.error ?? '')
+            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, `20260415120000_accent_hue.sql`, and `20260416100000_catalog_rank.sql`.'
             : ''
         throw new Error((json.error ?? 'Save failed') + hint)
       }
@@ -564,6 +629,12 @@ export function AddGamePage() {
       setSavedSlug(json.slug)
       setAccentMsg(null)
       setSubmitStatus(loadReviewSlug ? 'Updated.' : 'Saved.')
+      if (sb) {
+        const refresh = await sb.from('games').select('name, slug, catalog_rank').order('name')
+        const gameRows = (refresh.data ?? []) as CatalogRankedGame[]
+        setReviewedGames(gameRows.map(({ name, slug }) => ({ name, slug })))
+        setRankedCatalogGames([...gameRows].sort((a, b) => a.catalog_rank - b.catalog_rank))
+      }
     } catch (e) {
       setSubmitStatus(e instanceof Error ? e.message : 'Save failed')
     } finally {
@@ -571,11 +642,14 @@ export function AddGamePage() {
     }
   }, [
     accentHue,
+    catalogRankPosition,
     consText,
     coverImageUrl,
     editLoadError,
     editLoading,
     loadReviewSlug,
+    rankedCatalogGames.length,
+    sb,
     hltbCompletionistHours,
     hltbExtrasHours,
     hltbMainHours,
@@ -666,6 +740,49 @@ export function AddGamePage() {
             Back home
           </Link>
         </header>
+
+        <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+          <h2 className="text-lg font-semibold text-white">Home catalog rank</h2>
+          <p className="text-xs leading-relaxed text-zinc-500">
+            Required. Sets where this review appears when visitors use <strong className="text-zinc-400">Sort → Rank</strong>{' '}
+            on the home page. Rank <span className="font-mono text-zinc-400">1</span> is the top of the list. New reviews
+            default to the last slot; change the dropdown to insert elsewhere.
+          </p>
+          <label className="block text-sm font-medium text-zinc-300">Position for this review</label>
+          <select
+            className="mt-1 w-full max-w-xl rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none ring-emerald-500/30 focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
+            value={catalogRankPosition ?? ''}
+            disabled={catalogRankPosition == null || (!!loadReviewSlug && (editLoading || !!editLoadError))}
+            onChange={(e) => setCatalogRankPosition(Number(e.target.value))}
+          >
+            {catalogRankPosition == null ? (
+              <option value="">Loading catalog…</option>
+            ) : (
+              rankSelectOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))
+            )}
+          </select>
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Current order</p>
+          <div className="max-h-52 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/80 p-3">
+            {rankedCatalogGames.length === 0 ? (
+              <p className="text-sm text-zinc-500">No published reviews yet—this one will be rank 1.</p>
+            ) : (
+              <ol className="space-y-2 text-sm text-zinc-200">
+                {rankedCatalogGames.map((g) => (
+                  <li key={g.slug} className="flex gap-2">
+                    <span className="w-8 shrink-0 font-mono text-zinc-500 tabular-nums">{g.catalog_rank}.</span>
+                    <span className={g.slug === loadReviewSlug ? 'font-semibold text-emerald-200' : undefined}>
+                      {g.name}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        </section>
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold text-white">HowLongToBeat</h2>
@@ -1155,7 +1272,11 @@ export function AddGamePage() {
           />
           <button
             type="button"
-            disabled={submitBusy || (!!loadReviewSlug && (!!editLoadError || editLoading))}
+            disabled={
+              submitBusy ||
+              catalogRankPosition == null ||
+              (!!loadReviewSlug && (!!editLoadError || editLoading))
+            }
             onClick={() => void submit()}
             className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50"
           >

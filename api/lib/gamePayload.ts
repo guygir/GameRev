@@ -24,6 +24,8 @@ export type AddGameBody = {
   pros: string[]
   cons: string[]
   playIfLiked: { name: string }[]
+  /** 1-based position in the catalog (1 = first). Required on add/update from the editor. */
+  catalogRank?: number
 }
 
 export function parseStats(raw: unknown): GameStats | null {

@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { KofiSupportButton } from '../components/KofiSupportButton'
 import { MockNav } from '../components/MockNav'
 import { HomeCatalogLayoutToggle } from '../components/HomeCatalogLayoutToggle'
+import { HomeCatalogSortToggle } from '../components/HomeCatalogSortToggle'
 import { ReviewModeToggle } from '../components/ReviewModeToggle'
 import { formatReviewPublishedLabel } from '../lib/formatReviewPublished'
 import {
@@ -11,6 +12,11 @@ import {
   writeHomeCatalogLayoutPreference,
   type HomeCatalogLayout,
 } from '../lib/homeCatalogLayoutPreference'
+import {
+  readHomeCatalogSortPreference,
+  writeHomeCatalogSortPreference,
+  type HomeCatalogSort,
+} from '../lib/homeCatalogSortPreference'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference, writeReviewModePreference } from '../lib/reviewModePreference'
 import { getReviewTheme, type ReviewMode } from '../review/getReviewTheme'
@@ -29,14 +35,25 @@ type GameCard = {
   accent_hue: number | null
   accent_preset: number | null
   created_at: string
+  catalog_rank: number | null
+}
+
+/** Second line on catalog cover: publish date (date sort) or #rank (rank sort). */
+function catalogCoverMetaLine(sort: HomeCatalogSort, g: GameCard): string | null {
+  if (sort === 'rank') {
+    return typeof g.catalog_rank === 'number' && g.catalog_rank >= 1 ? `#${g.catalog_rank}` : null
+  }
+  return formatReviewPublishedLabel(g.created_at)
 }
 
 export function Home() {
   const sb = useMemo(() => getSupabaseBrowser(), [])
   const [games, setGames] = useState<GameCard[]>([])
   const [loadErr, setLoadErr] = useState<string | null>(null)
+  const [gamesLoading, setGamesLoading] = useState(false)
   const [homeMode, setHomeMode] = useState<ReviewMode>(() => readReviewModePreference())
   const [catalogLayout, setCatalogLayout] = useState(() => readHomeCatalogLayoutPreference())
+  const [catalogSort, setCatalogSort] = useState<HomeCatalogSort>(() => readHomeCatalogSortPreference())
   const homeTheme = useMemo(
     () =>
       getReviewTheme(homeMode, homeMode === 'dark' ? { darkAccentHue: DEFAULT_DARK_REVIEW_ACCENT_HUE } : undefined),
@@ -44,24 +61,38 @@ export function Home() {
   )
 
   useEffect(() => {
-    if (!sb) return
+    if (!sb) {
+      setGamesLoading(false)
+      return
+    }
     let cancelled = false
+    setGamesLoading(true)
+    setLoadErr(null)
     void (async () => {
-      const { data, error } = await sb
-        .from('games')
-        .select('slug, name, subtitle, cover_image_url, accent_hue, accent_preset, created_at')
-        .order('created_at', { ascending: false })
-      if (cancelled) return
-      if (error) {
-        setLoadErr(error.message)
-        return
+      try {
+        const q = sb
+          .from('games')
+          .select('slug, name, subtitle, cover_image_url, accent_hue, accent_preset, created_at, catalog_rank')
+        const { data, error } = await (
+          catalogSort === 'rank'
+            ? q.order('catalog_rank', { ascending: true })
+            : q.order('created_at', { ascending: false })
+        )
+        if (cancelled) return
+        if (error) {
+          setLoadErr(error.message)
+          setGames([])
+          return
+        }
+        setGames((data ?? []) as GameCard[])
+      } finally {
+        if (!cancelled) setGamesLoading(false)
       }
-      setGames((data ?? []) as GameCard[])
     })()
     return () => {
       cancelled = true
     }
-  }, [sb])
+  }, [sb, catalogSort])
 
   const onHomeModeChange = (next: ReviewMode) => {
     writeReviewModePreference(next)
@@ -73,7 +104,14 @@ export function Home() {
     setCatalogLayout(next)
   }
 
+  const onCatalogSortChange = (next: HomeCatalogSort) => {
+    writeHomeCatalogSortPreference(next)
+    setCatalogSort(next)
+  }
+
   const isLight = homeMode === 'light'
+  const sortBlurb =
+    catalogSort === 'date' ? 'Newest first.' : 'Manual catalog order (set on Add / Edit review).'
 
   return (
     <div
@@ -123,10 +161,13 @@ export function Home() {
                 isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/65',
               )}
             >
-              Newest first.
+              {sortBlurb}
             </p>
           </div>
-          <HomeCatalogLayoutToggle layout={catalogLayout} onChange={onCatalogLayoutChange} mode={homeMode} />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <HomeCatalogSortToggle sort={catalogSort} onChange={onCatalogSortChange} mode={homeMode} />
+            <HomeCatalogLayoutToggle layout={catalogLayout} onChange={onCatalogLayoutChange} mode={homeMode} />
+          </div>
         </div>
         {!sb ? (
           <p
@@ -140,6 +181,15 @@ export function Home() {
           </p>
         ) : loadErr ? (
           <p className={clsx('mt-4 text-sm', isLight ? 'text-rose-600' : 'text-rose-300/95')}>{loadErr}</p>
+        ) : gamesLoading ? (
+          <p
+            className={clsx(
+              'mt-4 text-sm leading-relaxed',
+              isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/70',
+            )}
+          >
+            Loading…
+          </p>
         ) : games.length === 0 ? (
           <p
             className={clsx(
@@ -163,7 +213,7 @@ export function Home() {
                     : null,
               })
               const cardStyle = homeCatalogCardCssVars(cardHue, isLight ? 'light' : 'dark')
-              const publishedLabel = formatReviewPublishedLabel(g.created_at)
+              const coverMeta = catalogCoverMetaLine(catalogSort, g)
               return (
                 <li key={g.slug} className="min-w-0">
                   <Link
@@ -194,14 +244,16 @@ export function Home() {
                             >
                               {g.name}
                             </p>
-                            {publishedLabel ? (
+                            {coverMeta ? (
                               <p
                                 className={clsx(
                                   homeTheme.fontBody,
                                   'mt-1 text-[10px] font-semibold uppercase tracking-widest text-white/90 sm:text-[11px]',
+                                  catalogSort === 'date' && 'normal-case tracking-normal',
+                                  catalogSort === 'rank' && 'font-mono tracking-normal',
                                 )}
                               >
-                                {publishedLabel}
+                                {coverMeta}
                               </p>
                             ) : null}
                           </div>
@@ -232,15 +284,17 @@ export function Home() {
                           >
                             {g.name}
                           </p>
-                          {publishedLabel ? (
+                          {coverMeta ? (
                             <p
                               className={clsx(
                                 homeTheme.fontBody,
                                 'mt-1 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]',
                                 isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/65',
+                                catalogSort === 'date' && 'normal-case tracking-normal',
+                                catalogSort === 'rank' && 'font-mono tracking-normal',
                               )}
                             >
-                              {publishedLabel}
+                              {coverMeta}
                             </p>
                           ) : null}
                         </div>
@@ -265,7 +319,7 @@ export function Home() {
                     : null,
               })
               const cardStyle = homeCatalogCardCssVars(cardHue, isLight ? 'light' : 'dark')
-              const publishedLabel = formatReviewPublishedLabel(g.created_at)
+              const coverMeta = catalogCoverMetaLine(catalogSort, g)
               return (
                 <li key={g.slug}>
                   <Link
@@ -288,15 +342,97 @@ export function Home() {
                         )}
                       >
                         {g.cover_image_url ? (
-                          <img src={g.cover_image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                          <>
+                            <img
+                              src={g.cover_image_url}
+                              alt=""
+                              className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-x-0 bottom-0 bg-black/50 px-2 py-2">
+                              <p
+                                className={clsx(
+                                  homeTheme.fontDisplay,
+                                  'line-clamp-3 text-xs font-semibold leading-snug text-white sm:text-sm',
+                                )}
+                              >
+                                {g.name}
+                              </p>
+                              {coverMeta ? (
+                                <p
+                                  className={clsx(
+                                    homeTheme.fontBody,
+                                    'mt-1 text-[10px] font-semibold text-white/90',
+                                    catalogSort === 'date' && 'normal-case',
+                                    catalogSort === 'rank' && 'font-mono',
+                                  )}
+                                >
+                                  {catalogSort === 'date' ? (
+                                    <>
+                                      <span className="font-semibold uppercase tracking-widest text-white/75">
+                                        Published
+                                      </span>{' '}
+                                      {coverMeta}
+                                    </>
+                                  ) : (
+                                    coverMeta
+                                  )}
+                                </p>
+                              ) : null}
+                            </div>
+                          </>
                         ) : (
                           <div
                             className={clsx(
-                              'flex h-full items-center justify-center text-xs',
-                              isLight ? 'text-zinc-400' : 'text-[#f4e9d8]/45',
+                              'flex h-full flex-col justify-end p-2.5',
+                              isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/70',
                             )}
                           >
-                            No art
+                            <span
+                              className={clsx(
+                                'text-[10px] font-semibold uppercase tracking-widest',
+                                isLight ? 'text-zinc-500' : 'text-[#f4e9d8]/50',
+                              )}
+                            >
+                              No art
+                            </span>
+                            <p
+                              className={clsx(
+                                homeTheme.fontDisplay,
+                                'mt-1 line-clamp-3 text-xs font-semibold leading-snug sm:text-sm',
+                                isLight
+                                  ? 'text-zinc-950 group-hover:text-[color:var(--home-catalog-title-hover)]'
+                                  : 'text-[#fff4e4] group-hover:text-[color:var(--home-catalog-title-hover)]',
+                              )}
+                            >
+                              {g.name}
+                            </p>
+                            {coverMeta ? (
+                              <p
+                                className={clsx(
+                                  homeTheme.fontBody,
+                                  'mt-1 text-[10px] font-semibold',
+                                  catalogSort === 'date' && 'normal-case',
+                                  catalogSort === 'rank' && 'font-mono',
+                                )}
+                              >
+                                {catalogSort === 'date' ? (
+                                  <>
+                                    <span
+                                      className={clsx(
+                                        'font-semibold uppercase tracking-widest',
+                                        isLight ? 'text-zinc-500' : 'text-[#f4e9d8]/55',
+                                      )}
+                                    >
+                                      Published
+                                    </span>{' '}
+                                    {coverMeta}
+                                  </>
+                                ) : (
+                                  coverMeta
+                                )}
+                              </p>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -312,27 +448,6 @@ export function Home() {
                         >
                           {g.name}
                         </h3>
-                        {publishedLabel ? (
-                          <p
-                            className={clsx(
-                              homeTheme.fontBody,
-                              'mt-2 text-xs leading-relaxed',
-                              isLight ? 'text-zinc-500' : 'text-[#f4e9d8]/55',
-                            )}
-                          >
-                            <span
-                              className={clsx(
-                                'font-semibold uppercase tracking-widest',
-                                isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/70',
-                              )}
-                            >
-                              Published
-                            </span>{' '}
-                            <span className={isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/80'}>
-                              {publishedLabel}
-                            </span>
-                          </p>
-                        ) : null}
                         {g.subtitle ? (
                           <p
                             className={clsx(

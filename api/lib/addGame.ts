@@ -1,3 +1,4 @@
+import { shiftCatalogRanksUpFrom, parseCatalogRankPosition } from './catalogRank.js'
 import { getServiceSupabase } from './supabaseAdmin.js'
 import { slugify } from './slug.js'
 import {
@@ -91,6 +92,19 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   const { data: gamesForLink, error: gamesErr } = await sb.from('games').select('name, slug')
   if (gamesErr) return { ok: false, status: 500, error: gamesErr.message }
 
+  const existingCount = gamesForLink?.length ?? 0
+  const catalogRank = parseCatalogRankPosition(b.catalogRank, 1, existingCount + 1)
+  if (catalogRank == null) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Invalid catalogRank: choose a position from 1 (first) through ${existingCount + 1} (last).`,
+    }
+  }
+
+  const shift = await shiftCatalogRanksUpFrom(sb, catalogRank)
+  if (!shift.ok) return { ok: false, status: 500, error: shift.error }
+
   const reviewed = buildReviewedLookup(gamesForLink ?? [])
   const play_if_liked = resolvePlayIfLiked(playPicks, reviewed)
 
@@ -124,6 +138,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
       play_if_liked,
       accent_hue,
       accent_preset: null,
+      catalog_rank: catalogRank,
     })
     .select('id')
     .single()
