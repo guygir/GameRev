@@ -3,8 +3,14 @@ import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { KofiSupportButton } from '../components/KofiSupportButton'
 import { MockNav } from '../components/MockNav'
+import { HomeCatalogLayoutToggle } from '../components/HomeCatalogLayoutToggle'
 import { ReviewModeToggle } from '../components/ReviewModeToggle'
 import { formatReviewPublishedLabel } from '../lib/formatReviewPublished'
+import {
+  readHomeCatalogLayoutPreference,
+  writeHomeCatalogLayoutPreference,
+  type HomeCatalogLayout,
+} from '../lib/homeCatalogLayoutPreference'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference, writeReviewModePreference } from '../lib/reviewModePreference'
 import { getReviewTheme, type ReviewMode } from '../review/getReviewTheme'
@@ -30,6 +36,7 @@ export function Home() {
   const [games, setGames] = useState<GameCard[]>([])
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [homeMode, setHomeMode] = useState<ReviewMode>(() => readReviewModePreference())
+  const [catalogLayout, setCatalogLayout] = useState(() => readHomeCatalogLayoutPreference())
   const homeTheme = useMemo(
     () =>
       getReviewTheme(homeMode, homeMode === 'dark' ? { darkAccentHue: DEFAULT_DARK_REVIEW_ACCENT_HUE } : undefined),
@@ -59,6 +66,11 @@ export function Home() {
   const onHomeModeChange = (next: ReviewMode) => {
     writeReviewModePreference(next)
     setHomeMode(next)
+  }
+
+  const onCatalogLayoutChange = (next: HomeCatalogLayout) => {
+    writeHomeCatalogLayoutPreference(next)
+    setCatalogLayout(next)
   }
 
   const isLight = homeMode === 'light'
@@ -102,15 +114,20 @@ export function Home() {
           <KofiSupportButton isLight={isLight} className={homeTheme.fontBody} />
         </header>
 
-        <h2 className={clsx('mt-14', homeTheme.fontDisplay, homeTheme.h2)}>Reviews</h2>
-        <p
-          className={clsx(
-            'mt-2 text-sm leading-relaxed',
-            isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/65',
-          )}
-        >
-          Newest first.
-        </p>
+        <div className="mt-14 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className={clsx(homeTheme.fontDisplay, homeTheme.h2)}>Reviews</h2>
+            <p
+              className={clsx(
+                'mt-2 text-sm leading-relaxed',
+                isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/65',
+              )}
+            >
+              Newest first.
+            </p>
+          </div>
+          <HomeCatalogLayoutToggle layout={catalogLayout} onChange={onCatalogLayoutChange} mode={homeMode} />
+        </div>
         {!sb ? (
           <p
             className={clsx(
@@ -132,6 +149,108 @@ export function Home() {
           >
             No reviews yet.
           </p>
+        ) : catalogLayout === 'compact' ? (
+          <ul className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {games.map((g) => {
+              const cardHue = resolveDarkAccentHue(g.slug, {
+                accentHue:
+                  typeof g.accent_hue === 'number' && g.accent_hue >= 0 && g.accent_hue < 360
+                    ? Math.round(g.accent_hue)
+                    : null,
+                accentPreset:
+                  typeof g.accent_preset === 'number' && g.accent_preset >= 0 && g.accent_preset <= 4
+                    ? g.accent_preset
+                    : null,
+              })
+              const cardStyle = homeCatalogCardCssVars(cardHue, isLight ? 'light' : 'dark')
+              const publishedLabel = formatReviewPublishedLabel(g.created_at)
+              return (
+                <li key={g.slug} className="min-w-0">
+                  <Link
+                    to={`/g/${g.slug}?mode=${homeMode}`}
+                    style={cardStyle}
+                    className={clsx(
+                      'group block overflow-hidden rounded-xl border shadow-sm transition duration-200',
+                      isLight
+                        ? 'border-[color:var(--home-catalog-border)] bg-[color:var(--home-catalog-surface)] hover:border-[color:var(--home-catalog-border-hover)] hover:shadow-[0_14px_48px_-12px_var(--home-catalog-glow)]'
+                        : 'border-[color:var(--home-catalog-border)] bg-[color:var(--home-catalog-surface)] hover:border-[color:var(--home-catalog-border-hover)] hover:bg-[color:var(--home-catalog-surface-hover)] hover:shadow-[0_0_48px_-10px_var(--home-catalog-glow)]',
+                    )}
+                  >
+                    <div className="relative aspect-[4/5] overflow-hidden">
+                      {g.cover_image_url ? (
+                        <>
+                          <img
+                            src={g.cover_image_url}
+                            alt=""
+                            className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.03]"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 bg-black/50 px-2.5 py-2 sm:px-3 sm:py-2.5">
+                            <p
+                              className={clsx(
+                                homeTheme.fontDisplay,
+                                'line-clamp-2 text-sm font-semibold leading-tight text-white sm:text-base',
+                              )}
+                            >
+                              {g.name}
+                            </p>
+                            {publishedLabel ? (
+                              <p
+                                className={clsx(
+                                  homeTheme.fontBody,
+                                  'mt-1 text-[10px] font-semibold uppercase tracking-widest text-white/90 sm:text-[11px]',
+                                )}
+                              >
+                                {publishedLabel}
+                              </p>
+                            ) : null}
+                          </div>
+                        </>
+                      ) : (
+                        <div
+                          className={clsx(
+                            'flex h-full flex-col justify-end p-2.5 sm:p-3',
+                            isLight ? 'bg-zinc-100' : 'bg-zinc-900',
+                          )}
+                        >
+                          <span
+                            className={clsx(
+                              'text-[10px] font-semibold uppercase tracking-widest',
+                              isLight ? 'text-zinc-500' : 'text-[#f4e9d8]/50',
+                            )}
+                          >
+                            No art
+                          </span>
+                          <p
+                            className={clsx(
+                              homeTheme.fontDisplay,
+                              'mt-1 line-clamp-2 text-sm font-semibold leading-tight sm:text-base',
+                              isLight
+                                ? 'text-zinc-950 group-hover:text-[color:var(--home-catalog-title-hover)]'
+                                : 'text-[#fff4e4] group-hover:text-[color:var(--home-catalog-title-hover)]',
+                            )}
+                          >
+                            {g.name}
+                          </p>
+                          {publishedLabel ? (
+                            <p
+                              className={clsx(
+                                homeTheme.fontBody,
+                                'mt-1 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]',
+                                isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/65',
+                              )}
+                            >
+                              {publishedLabel}
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
         ) : (
           <ul className="mt-6 space-y-4">
             {games.map((g) => {
