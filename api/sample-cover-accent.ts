@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const url = typeof (body as { url?: unknown }).url === 'string' ? (body as { url: string }).url : ''
   const out = await sampleCoverAccentFromUrl(url)
-  if (!out.ok) {
+  if (out.ok === false) {
     res.status(422).json({ error: out.error })
     return
   }

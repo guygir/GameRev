@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     addGamePassword: process.env.ADD_GAME_PASSWORD ?? '',
   })
 
-  if (!out.ok) {
+  if (out.ok === false) {
     res.status(out.status).json({ error: out.error })
     return
   }
