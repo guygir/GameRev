@@ -84,8 +84,9 @@ const lightBase = (): Omit<
   tagPill:
     'rounded-sm border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700',
   details: 'group rounded-md border border-zinc-200 bg-white p-4 shadow-sm open:bg-zinc-50',
+  /** `<summary>`: match section `<h2>` (display + size); not body UI font. */
   summary:
-    'cursor-pointer font-semibold text-zinc-950 outline-none transition group-open:text-brand',
+    'cursor-pointer font-[family-name:var(--font-anthropic-display)] text-2xl font-semibold tracking-tight text-zinc-950 outline-none transition group-open:text-brand',
   prosHeading: 'text-xs font-semibold uppercase tracking-[0.2em] text-emerald-800',
   consHeading: 'text-xs font-semibold uppercase tracking-[0.2em] text-rose-800',
   prosBody: 'mt-2 space-y-2 text-sm leading-relaxed text-zinc-700',
@@ -133,7 +134,7 @@ const darkEditorial = (): Omit<
     'rounded-sm border border-white/15 px-3 py-1 text-xs text-[#f4e9d8]/80',
   details: 'group rounded-md border border-white/10 bg-black/20 p-4 open:bg-black/30',
   summary:
-    'cursor-pointer font-semibold text-[#fff4e4] outline-none transition group-open:text-[color:var(--review-accent)]',
+    'cursor-pointer font-[family-name:var(--font-anthropic-display)] text-2xl font-semibold tracking-tight text-[#fff4e4] outline-none transition group-open:text-[color:var(--review-accent)]',
   prosHeading: 'text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/90',
   consHeading: 'text-xs font-semibold uppercase tracking-[0.2em] text-rose-300/90',
   prosBody: 'mt-2 space-y-2 text-sm leading-relaxed text-[#f4e9d8]/85',

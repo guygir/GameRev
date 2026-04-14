@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import type { GameStats } from '../review/gameStats'
 import { StatRadar } from './StatRadar'
@@ -29,6 +29,8 @@ export type GameReviewViewModel = {
   playIfLiked: { name: string; slug: string | null }[]
   pros: string[]
   cons: string[]
+  /** Long-form summary; null shows a placeholder until stored in DB. */
+  reviewSummary: string | null
   stats: GameStats
   radarLabel: string
   /** DB `accent_hue` (0–359); null if unset. */
@@ -39,6 +41,30 @@ export type GameReviewViewModel = {
 
 function ReviewCoverFallback({ variant }: { variant: 'anthropic' | 'light' }) {
   return variant === 'light' ? <CoverArtLight /> : <CoverArtAnthropic />
+}
+
+const PLACEHOLDER_SUMMARIES = [
+  'A tight, spoiler-light verdict will live here once you write a short editorial summary for this review.',
+  'This fold is reserved for a one-paragraph capsule: tone, audience, and why the game is worth your time.',
+  'The summary line will anchor the page for skimmers; for now this copy stands in so you can tune layout and rhythm.',
+  'Think of this as the elevator pitch after the scores: what stayed with you after the credits rolled?',
+  'Later this block can pull from the database; today it is sample text so the disclosure affordance is visible.',
+] as const
+
+function hashString(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+function resolvedReviewSummary(vm: GameReviewViewModel): string {
+  const t = vm.reviewSummary?.trim()
+  if (t) return t
+  const i = hashString(vm.name) % PLACEHOLDER_SUMMARIES.length
+  return PLACEHOLDER_SUMMARIES[i]!
 }
 
 type GameReviewViewProps = {
@@ -204,7 +230,7 @@ export function GameReviewView({
               {vm.platforms.length ? (
                 <div>
                   <h2 className={clsx(theme.fontDisplay, theme.h2)}>Platforms</h2>
-                  <ul className="mt-3 flex flex-wrap gap-2">
+                  <ul className="mt-4 flex flex-wrap gap-2">
                     {vm.platforms.map((p) => (
                       <li key={p} className={theme.tagPill}>
                         {p}
@@ -216,7 +242,7 @@ export function GameReviewView({
 
               <div>
                 <h2 className={clsx(theme.fontDisplay, theme.h2)}>Genres</h2>
-                <ul className="mt-3 flex flex-wrap gap-2">
+                <ul className="mt-4 flex flex-wrap gap-2">
                   {vm.genres.map((g) => (
                     <li key={g} className={theme.genrePill}>
                       {g}
@@ -227,9 +253,9 @@ export function GameReviewView({
 
               <div>
                 <h2 className={clsx(theme.fontDisplay, theme.h2)}>Tags</h2>
-                <ul className="mt-3 flex flex-wrap gap-2">
+                <ul className="mt-4 flex flex-wrap gap-2">
                   {vm.tags.map((t) => (
-                    <li key={t} className={theme.tagPill}>
+                    <li key={t} className={theme.genrePill}>
                       {t}
                     </li>
                   ))}
@@ -238,29 +264,14 @@ export function GameReviewView({
 
               <div>
                 <h2 className={clsx(theme.fontDisplay, theme.h2)}>Play this if you liked</h2>
-                <p className="mt-3 text-sm leading-relaxed">
-                  <span
-                    className={clsx(
-                      'font-semibold',
-                      mode === 'light' ? 'text-zinc-800' : 'text-[#fff4e4]',
-                    )}
-                  >
-                    Play this if you liked:{' '}
-                  </span>
+                <ul
+                  className={clsx(
+                    'mt-4 list-none space-y-2.5 p-0 text-sm leading-relaxed',
+                    theme.fontBody,
+                  )}
+                >
                   {vm.playIfLiked.map((pick, i) => (
-                    <Fragment key={`${pick.name}-${i}`}>
-                      {i > 0 ? (
-                        <span
-                          className={clsx(
-                            'select-none',
-                            mode === 'light' ? 'text-zinc-400' : 'text-[#f4e9d8]/40',
-                          )}
-                          aria-hidden
-                        >
-                          {' '}
-                          ·{' '}
-                        </span>
-                      ) : null}
+                    <li key={`${pick.name}-${i}`}>
                       {pick.slug ? (
                         <Link
                           className={clsx(
@@ -283,9 +294,9 @@ export function GameReviewView({
                           {pick.name}
                         </span>
                       )}
-                    </Fragment>
+                    </li>
                   ))}
-                </p>
+                </ul>
               </div>
             </div>
 
@@ -324,8 +335,13 @@ export function GameReviewView({
             </div>
           </div>
 
-          <details className={theme.details} open>
-            <summary className={theme.summary}>Pros and cons</summary>
+          <div
+            className={clsx(
+              'mt-10 border-t pt-10',
+              mode === 'light' ? 'border-zinc-200' : 'border-white/10',
+            )}
+          >
+            <h2 className={clsx(theme.fontDisplay, theme.h2)}>Pros and Cons</h2>
             <div className="mt-4 grid gap-8 md:grid-cols-2 md:gap-10">
               <div>
                 <h3 className={theme.prosHeading}>Pros</h3>
@@ -344,6 +360,19 @@ export function GameReviewView({
                 </ul>
               </div>
             </div>
+          </div>
+
+          <details className={clsx(theme.details, 'mt-10')}>
+            <summary className={theme.summary}>Summary</summary>
+            <p
+              className={clsx(
+                theme.fontBody,
+                'mt-4 text-sm leading-relaxed',
+                mode === 'light' ? 'text-zinc-700' : 'text-[#f4e9d8]/85',
+              )}
+            >
+              {resolvedReviewSummary(vm)}
+            </p>
           </details>
         </section>
       </div>

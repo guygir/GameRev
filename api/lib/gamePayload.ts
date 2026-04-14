@@ -23,6 +23,8 @@ export type AddGameBody = {
   tags: string[]
   pros: string[]
   cons: string[]
+  /** Optional capsule summary for `/g/:slug` (stored as `games.summary`). */
+  summary?: string | null
   playIfLiked: { name: string }[]
   /** 1-based position in the catalog (1 = first). Required on add/update from the editor. */
   catalogRank?: number
@@ -40,6 +42,15 @@ export function parseStats(raw: unknown): GameStats | null {
     out[axis] = n
   }
   return out
+}
+
+/** Trims and caps length; empty input becomes null for nullable DB columns. */
+export function normalizeSummaryText(raw: unknown, maxLen: number): string | null {
+  if (raw === undefined || raw === null) return null
+  if (typeof raw !== 'string') return null
+  const t = raw.trim()
+  if (!t) return null
+  return t.slice(0, maxLen)
 }
 
 export function normalizeStringList(raw: unknown, maxItems: number, maxLen: number): string[] {

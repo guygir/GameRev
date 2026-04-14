@@ -37,6 +37,7 @@ export function StructuredGameReviewPage() {
       ),
       pros: [...mockGame.pros],
       cons: [...mockGame.cons],
+      reviewSummary: mockGame.reviewSummary,
       stats: { ...mockGame.stats },
       radarLabel: 'Signalis review stats radar chart',
       accentHue: null,

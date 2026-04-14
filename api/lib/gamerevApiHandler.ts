@@ -1,5 +1,6 @@
 import { HowLongToBeatService } from '@micamerzeau/howlongtobeat'
 import { formatReviewPublishedLabel } from '../../src/lib/formatReviewPublished.js'
+import { fetchBackloggdSuggestions } from './backloggdSuggestions.js'
 import { addGameFromBody } from './addGame.js'
 import { updateGameFromBody } from './updateGame.js'
 import { fetchIgdbGenreMatches } from './igdbGenres.js'
@@ -108,6 +109,15 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       return { status: 200, body: { slug: out.slug } }
     }
 
+    if (method === 'POST' && route === 'backloggd-suggestions') {
+      const body = (jsonBody ?? {}) as { query?: unknown; useLlm?: unknown }
+      const q = typeof body.query === 'string' ? body.query : ''
+      const useLlm = body.useLlm === true
+      const out = await fetchBackloggdSuggestions(q, { useLlm, env })
+      if (!out.ok) return { status: 422, body: { error: out.error } }
+      return { status: 200, body: out.data }
+    }
+
     if (method === 'POST' && route === 'sample-cover-accent') {
       const body = (jsonBody ?? {}) as { url?: unknown }
       const rawUrl = typeof body.url === 'string' ? body.url : ''
@@ -143,6 +153,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
           stats,
           pros,
           cons,
+          summary,
           play_if_liked,
           created_at,
           game_genres ( genre ),
@@ -170,6 +181,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         stats: unknown
         pros: string[]
         cons: string[]
+        summary: string | null
         play_if_liked: unknown
         created_at: string
         game_genres: { genre: string }[] | null
@@ -195,6 +207,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
             stats: row.stats,
             pros: row.pros ?? [],
             cons: row.cons ?? [],
+            summary: row.summary?.trim() ? row.summary.trim() : null,
             playIfLiked: row.play_if_liked,
             genres: (row.game_genres ?? []).map((r) => r.genre),
             tags: (row.game_tags ?? []).map((r) => r.tag),

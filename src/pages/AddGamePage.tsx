@@ -70,6 +70,33 @@ type IgdbGenreRow = {
 
 type CatalogRankedGame = { name: string; slug: string; catalog_rank: number }
 
+type BackloggdSuggestPayload = {
+  backloggdGameUrl: string
+  backloggdTitle: string
+  backloggdSlug: string
+  reviewSnippets: string[]
+  suggestedTags: string[]
+  suggestedPlayIfLiked: string[]
+  suggestedPros: string[]
+  suggestedCons: string[]
+  llmError?: string
+}
+
+function appendUniqueLines(current: string, lines: string[]): string {
+  const exist = new Set(linesToList(current).map((s) => s.toLowerCase()))
+  const add: string[] = []
+  for (const raw of lines) {
+    const t = raw.trim()
+    if (!t) continue
+    const k = t.toLowerCase()
+    if (exist.has(k)) continue
+    exist.add(k)
+    add.push(t)
+  }
+  if (!add.length) return current
+  return [...linesToList(current), ...add].join('\n')
+}
+
 function ChipToggle({
   label,
   active,
@@ -133,6 +160,10 @@ export function AddGamePage() {
   const [igdbMatches, setIgdbMatches] = useState<IgdbGenreRow[]>([])
   const [igdbBusy, setIgdbBusy] = useState(false)
   const [igdbErr, setIgdbErr] = useState<string | null>(null)
+  const [backloggdBusy, setBackloggdBusy] = useState(false)
+  const [backloggdErr, setBackloggdErr] = useState<string | null>(null)
+  const [backloggdData, setBackloggdData] = useState<BackloggdSuggestPayload | null>(null)
+  const [backloggdUseLlm, setBackloggdUseLlm] = useState(false)
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [tagDraft, setTagDraft] = useState('')
 
@@ -141,6 +172,7 @@ export function AddGamePage() {
   const [playIfLikedText, setPlayIfLikedText] = useState('')
   const [prosText, setProsText] = useState('')
   const [consText, setConsText] = useState('')
+  const [summaryText, setSummaryText] = useState('')
 
   const [submitStatus, setSubmitStatus] = useState<string | null>(null)
   const [submitBusy, setSubmitBusy] = useState(false)
@@ -178,12 +210,15 @@ export function AddGamePage() {
     setIgdbMatches([])
     setIgdbBusy(false)
     setIgdbErr(null)
+    setBackloggdData(null)
+    setBackloggdErr(null)
     setSelectedTags(new Set())
     setTagDraft('')
     setStats(defaultStats())
     setPlayIfLikedText('')
     setProsText('')
     setConsText('')
+    setSummaryText('')
     setSubmitStatus(null)
     setSavedSlug(null)
     catalogDefaultAppendDoneRef.current = true
@@ -263,6 +298,7 @@ export function AddGamePage() {
         stats: unknown
         pros: string[]
         cons: string[]
+        summary: string | null
         play_if_liked: { name: string; slug?: string | null }[] | null
         game_genres: { genre: string }[] | null
         game_tags: { tag: string }[] | null
@@ -285,6 +321,7 @@ export function AddGamePage() {
           stats,
           pros,
           cons,
+          summary,
           play_if_liked,
           game_genres ( genre ),
           game_tags ( tag )
@@ -332,6 +369,7 @@ export function AddGamePage() {
       setPoolTags((prev) => [...new Set([...prev, ...tList])].sort((a, b) => a.localeCompare(b)))
       setProsText((row.pros ?? []).join('\n'))
       setConsText((row.cons ?? []).join('\n'))
+      setSummaryText(row.summary?.trim() ?? '')
       const pil = Array.isArray(row.play_if_liked) ? row.play_if_liked : []
       setPlayIfLikedText(pil.map((p) => p.name).join('\n'))
       setExtGenreQuery(row.name)
@@ -487,6 +525,38 @@ export function AddGamePage() {
     void runIgdbSearch(extSearchQ())
   }, [extSearchQ, runIgdbSearch])
 
+  const runBackloggdSuggestions = useCallback(async () => {
+    const q = name.trim()
+    if (q.length < 2) {
+      setBackloggdErr('Set the game name first (at least 2 characters).')
+      return
+    }
+    setBackloggdBusy(true)
+    setBackloggdErr(null)
+    try {
+      const res = await fetch('/api/backloggd-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q, useLlm: backloggdUseLlm }),
+      })
+      const json = (await res.json()) as BackloggdSuggestPayload & { error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'Backloggd request failed')
+      setBackloggdData(json)
+    } catch (e) {
+      setBackloggdData(null)
+      setBackloggdErr(e instanceof Error ? e.message : 'Backloggd request failed')
+    } finally {
+      setBackloggdBusy(false)
+    }
+  }, [name, backloggdUseLlm])
+
+  const addSuggestedTag = useCallback((tag: string) => {
+    const t = tag.trim()
+    if (!t) return
+    setPoolTags((prev) => (prev.includes(t) ? prev : [...prev, t].sort((a, b) => a.localeCompare(b))))
+    setSelectedTags((prev) => new Set(prev).add(t))
+  }, [])
+
   const addTagDraft = useCallback(() => {
     const v = tagDraft.trim()
     if (!v) return
@@ -606,6 +676,7 @@ export function AddGamePage() {
         tags: [...selectedTags],
         pros: linesToList(prosText),
         cons: linesToList(consText),
+        summary: summaryText.trim() || null,
         playIfLiked,
         accentHue,
         catalogRank: catalogRankPosition,
@@ -621,7 +692,7 @@ export function AddGamePage() {
       if (!res.ok) {
         const hint =
           /platforms|release_label|accent_preset|accent_hue|catalog_rank|schema cache/i.test(json.error ?? '')
-            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, `20260415120000_accent_hue.sql`, and `20260416100000_catalog_rank.sql`.'
+            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, `20260415120000_accent_hue.sql`, `20260416100000_catalog_rank.sql`, and `20260417120000_review_summary.sql`.'
             : ''
         throw new Error((json.error ?? 'Save failed') + hint)
       }
@@ -644,6 +715,7 @@ export function AddGamePage() {
     accentHue,
     catalogRankPosition,
     consText,
+    summaryText,
     coverImageUrl,
     editLoadError,
     editLoading,
@@ -841,6 +913,184 @@ export function AddGamePage() {
             onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
           />
+          <div className="mt-4 rounded-lg border border-zinc-700/80 bg-zinc-950/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Backloggd community</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+              The server calls Backloggd the same way as a browser: search{' '}
+              <span className="font-mono text-zinc-400">/search/games/&lt;name&gt;</span>, takes the{' '}
+              <strong className="text-zinc-400">first hit</strong>, loads its page for genres, then pulls{' '}
+              <strong className="text-zinc-400">recent written reviews</strong> (not per-review comment threads). Tags use
+              genres + repeated words; play-if-liked / pros / cons use simple heuristics unless you enable cloud AI below.
+            </p>
+            <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-zinc-400">
+              <input
+                type="checkbox"
+                className="mt-0.5 border-zinc-600 text-amber-500 focus:ring-amber-500/40"
+                checked={backloggdUseLlm}
+                onChange={(e) => setBackloggdUseLlm(e.target.checked)}
+              />
+              <span>
+                <strong className="text-zinc-300">Cloud AI</strong> for play-if-liked + pros + cons (OpenAI or Gemini API
+                key on the server — runs on their GPUs, not yours). Tags stay heuristic. OpenAI is pay-as-you-go; Gemini
+                often has a free quota — see{' '}
+                <a className="text-amber-300/90 underline-offset-2 hover:underline" href="https://ai.google.dev/pricing" target="_blank" rel="noreferrer">
+                  Gemini pricing
+                </a>
+                .
+              </span>
+            </label>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={backloggdBusy}
+                onClick={() => void runBackloggdSuggestions()}
+                className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition hover:border-amber-500/50 hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {backloggdBusy ? 'Fetching Backloggd…' : 'Suggest from Backloggd'}
+              </button>
+              <a
+                className="text-xs font-semibold text-amber-300/90 underline-offset-2 hover:underline"
+                href={`https://backloggd.com/search/games/${encodeURIComponent(name.trim())}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open search in new tab
+              </a>
+            </div>
+            {backloggdErr ? <p className="mt-2 text-xs text-rose-300">{backloggdErr}</p> : null}
+            {backloggdData?.llmError ? (
+              <p className="mt-2 text-xs text-amber-200/90">AI refinement skipped: {backloggdData.llmError}</p>
+            ) : null}
+            {backloggdData ? (
+              <div className="mt-4 space-y-4 border-t border-zinc-800 pt-4">
+                <p className="text-sm text-zinc-200">
+                  Matched{' '}
+                  <a
+                    href={backloggdData.backloggdGameUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-amber-200/95 underline-offset-2 hover:underline"
+                  >
+                    {backloggdData.backloggdTitle}
+                  </a>{' '}
+                  <span className="font-mono text-xs text-zinc-500">({backloggdData.backloggdSlug})</span>
+                </p>
+                {backloggdData.reviewSnippets.length ? (
+                  <details className="text-xs text-zinc-400">
+                    <summary className="cursor-pointer font-medium text-zinc-300">
+                      Review excerpts used ({backloggdData.reviewSnippets.length})
+                    </summary>
+                    <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded border border-zinc-800 bg-zinc-950/80 p-2 text-zinc-400">
+                      {backloggdData.reviewSnippets.map((s, i) => (
+                        <li key={i} className="leading-relaxed">
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+                {backloggdData.suggestedTags.length ? (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Suggested tags</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {backloggdData.suggestedTags.map((t) => (
+                        <span key={t} className="inline-flex items-center gap-1 rounded-full border border-zinc-600 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-200">
+                          {t}
+                          <button
+                            type="button"
+                            onClick={() => addSuggestedTag(t)}
+                            className="rounded bg-amber-600/80 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 hover:bg-amber-500"
+                          >
+                            Add
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {backloggdData.suggestedPlayIfLiked.length ? (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Play this if you liked</p>
+                    <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+                      {backloggdData.suggestedPlayIfLiked.map((line) => (
+                        <li key={line} className="flex flex-wrap items-center gap-2">
+                          <span className="min-w-0">{line}</span>
+                          <button
+                            type="button"
+                            onClick={() => setPlayIfLikedText((prev) => appendUniqueLines(prev, [line]))}
+                            className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-400 hover:text-amber-300"
+                          >
+                            Add line
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPlayIfLikedText((prev) => appendUniqueLines(prev, backloggdData.suggestedPlayIfLiked))
+                      }
+                      className="mt-2 text-xs font-semibold text-amber-300/90 underline-offset-2 hover:underline"
+                    >
+                      Add all lines
+                    </button>
+                  </div>
+                ) : null}
+                {backloggdData.suggestedPros.length ? (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Suggested pros</p>
+                    <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+                      {backloggdData.suggestedPros.map((line) => (
+                        <li key={line} className="flex flex-wrap items-start gap-2">
+                          <span className="min-w-0 flex-1 leading-snug">{line}</span>
+                          <button
+                            type="button"
+                            onClick={() => setProsText((prev) => appendUniqueLines(prev, [line]))}
+                            className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-400 hover:text-amber-300"
+                          >
+                            Append
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => setProsText((prev) => appendUniqueLines(prev, backloggdData.suggestedPros))}
+                      className="mt-2 text-xs font-semibold text-amber-300/90 underline-offset-2 hover:underline"
+                    >
+                      Append all pros
+                    </button>
+                  </div>
+                ) : null}
+                {backloggdData.suggestedCons.length ? (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Suggested cons</p>
+                    <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+                      {backloggdData.suggestedCons.map((line) => (
+                        <li key={line} className="flex flex-wrap items-start gap-2">
+                          <span className="min-w-0 flex-1 leading-snug">{line}</span>
+                          <button
+                            type="button"
+                            onClick={() => setConsText((prev) => appendUniqueLines(prev, [line]))}
+                            className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-400 hover:text-amber-300"
+                          >
+                            Append
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => setConsText((prev) => appendUniqueLines(prev, backloggdData.suggestedCons))}
+                      className="mt-2 text-xs font-semibold text-amber-300/90 underline-offset-2 hover:underline"
+                    >
+                      Append all cons
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <label className="mt-4 block text-sm font-medium text-zinc-300">
             Cover image URL <span className="font-normal text-zinc-500">(HLTB fills this; shown large on the review)</span>
           </label>
@@ -1236,7 +1486,7 @@ export function AddGamePage() {
         </section>
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
-          <h2 className="text-lg font-semibold text-white">Pros and cons</h2>
+          <h2 className="text-lg font-semibold text-white">Pros and Cons</h2>
           <p className="text-xs text-zinc-500">One bullet per line.</p>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
@@ -1258,6 +1508,21 @@ export function AddGamePage() {
               />
             </div>
           </div>
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+          <h2 className="text-lg font-semibold text-white">Summary</h2>
+          <p className="text-xs text-zinc-500">
+            Optional capsule for the public review page (Summary fold). Plain text; long-form is fine (up to about 12k
+            characters).
+          </p>
+          <textarea
+            value={summaryText}
+            onChange={(e) => setSummaryText(e.target.value)}
+            rows={6}
+            className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
+            placeholder="Short verdict for skimmers—no spoilers, your own words."
+          />
         </section>
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">

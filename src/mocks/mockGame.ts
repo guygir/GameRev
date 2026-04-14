@@ -26,6 +26,9 @@ export const mockGame = {
     'Inventory management can slow momentum',
     'Backtracking without new context can feel long',
   ],
+  /** Shown in the structured mock review Summary fold. */
+  reviewSummary:
+    'A survival-horror standout that wears its influences proudly while carving its own bleak, memorable identity.',
   stats: {
     Value: 85,
     Architecture: 82,

@@ -47,6 +47,7 @@ const logical = [
   'GET  /api/igdb-genres',
   'POST /api/add-game',
   'POST /api/update-game',
+  'POST /api/backloggd-suggestions',
   'POST /api/sample-cover-accent',
   'GET  /api/review',
 ]

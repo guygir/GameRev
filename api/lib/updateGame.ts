@@ -4,6 +4,7 @@ import {
   buildReviewedLookup,
   normalizePlayIfLiked,
   normalizeStringList,
+  normalizeSummaryText,
   parseStats,
   resolveAccentHueFromBody,
   resolvePlayIfLiked,
@@ -72,6 +73,7 @@ export async function updateGameFromBody(
   const tags = normalizeStringList(b.tags, 40, 80)
   const pros = normalizeStringList(b.pros, 40, 600)
   const cons = normalizeStringList(b.cons, 40, 600)
+  const summary = normalizeSummaryText(b.summary, 12_000)
   const playPicks = normalizePlayIfLiked(b.playIfLiked, 16)
 
   const numOrNull = (v: unknown): number | null => {
@@ -131,6 +133,7 @@ export async function updateGameFromBody(
       stats,
       pros,
       cons,
+      summary,
       play_if_liked,
       ...accentRowPatch,
     })
