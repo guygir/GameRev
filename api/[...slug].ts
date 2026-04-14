@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { handleGamerevApi } from './lib/gamerevApiHandler.js'
+import { handleGamerevApi } from '../server/lib/gamerevApiHandler.js'
 
 function parseBody(req: VercelRequest): unknown | null {
   const raw = req.body

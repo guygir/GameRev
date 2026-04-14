@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
-import { handleGamerevApi } from '../api/lib/gamerevApiHandler.js'
+import { handleGamerevApi } from './lib/gamerevApiHandler.js'
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {

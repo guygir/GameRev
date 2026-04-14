@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Lists Vercel Serverless Function entry files under /api (excluding api/lib/).
- * After batching, only the catch-all `api/[...slug].ts` counts as ONE function.
+ * Lists Vercel Serverless Function entry files under /api (shared code lives in server/lib/).
+ * Only the catch-all `api/[...slug].ts` counts as ONE function.
  *
  *   npm run vercel:list-functions
  */
@@ -33,7 +33,7 @@ function collectApiRouteFiles(dir, relParts = []) {
   return files
 }
 
-console.log('--- Vercel Serverless Function entry files (api/**/*.ts, excluding api/lib/) ---\n')
+console.log('--- Vercel Serverless Function entry files (api/**/*.ts; handlers only) ---\n')
 const entries = collectApiRouteFiles(apiDir).sort()
 console.log(`Physical function count: ${entries.length} (Hobby limit: 12)\n`)
 for (const r of entries) {
