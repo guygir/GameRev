@@ -174,7 +174,7 @@ export async function updateGameFromBody(
   }
   const nextOrder = [...without.slice(0, newPos - 1), gameId, ...without.slice(newPos - 1)]
   const orderOut = await persistCatalogOrder(sb, nextOrder)
-  if (!orderOut.ok) return { ok: false, status: 500, error: orderOut.error }
+  if (orderOut.ok === false) return { ok: false, status: 500, error: orderOut.error }
 
   return { ok: true, slug }
 }

@@ -115,7 +115,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       const q = typeof body.query === 'string' ? body.query : ''
       const useLlm = body.useLlm === true
       const out = await fetchBackloggdSuggestions(q, { useLlm, env })
-      if (!out.ok) return { status: 422, body: { error: out.error } }
+      if (out.ok === false) return { status: 422, body: { error: out.error } }
       return { status: 200, body: out.data }
     }
 

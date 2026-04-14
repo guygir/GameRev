@@ -254,7 +254,7 @@ export async function fetchBackloggdSuggestions(
 
   const searchUrl = `${BACKLOGGD_ORIGIN}/search/results.turbo_stream?page=1&query=${encodeURIComponent(query)}&type=games`
   const searchRes = await fetchText(searchUrl)
-  if (!searchRes.ok) return { ok: false, error: searchRes.error }
+  if (searchRes.ok === false) return { ok: false, error: searchRes.error }
 
   const hit = parseFirstSearchHit(searchRes.text)
   if (!hit) {
@@ -263,12 +263,12 @@ export async function fetchBackloggdSuggestions(
 
   const gameUrl = `${BACKLOGGD_ORIGIN}/games/${hit.slug}/`
   const gameRes = await fetchText(gameUrl)
-  if (!gameRes.ok) return { ok: false, error: gameRes.error }
+  if (gameRes.ok === false) return { ok: false, error: gameRes.error }
 
   const genres = extractGenresFromGamePage(gameRes.text)
   const reviewsUrl = `${BACKLOGGD_ORIGIN}/reviews/fetch/recent.turbo_stream?game_id=${encodeURIComponent(hit.gameId)}`
   const reviewsRes = await fetchText(reviewsUrl)
-  if (!reviewsRes.ok) return { ok: false, error: reviewsRes.error }
+  if (reviewsRes.ok === false) return { ok: false, error: reviewsRes.error }
 
   const reviewBodies = extractReviewBodiesFromTurbo(reviewsRes.text)
 
@@ -311,7 +311,7 @@ export async function fetchBackloggdSuggestions(
       suggestedPlayIfLiked = refined.data.suggestedPlayIfLiked
       suggestedPros = refined.data.suggestedPros
       suggestedCons = refined.data.suggestedCons
-    } else {
+    } else if (refined.ok === false) {
       llmError = refined.error
     }
   }
