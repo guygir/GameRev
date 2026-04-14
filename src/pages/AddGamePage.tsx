@@ -641,6 +641,7 @@ export function AddGamePage() {
 
   const submit = useCallback(async () => {
     setSubmitStatus(null)
+    setSavedSlug(null)
     if (!name.trim()) {
       setSubmitStatus('Game name is required.')
       return
@@ -699,7 +700,11 @@ export function AddGamePage() {
       if (!json.slug) throw new Error('Missing slug in response')
       setSavedSlug(json.slug)
       setAccentMsg(null)
-      setSubmitStatus(loadReviewSlug ? 'Updated.' : 'Saved.')
+      setSubmitStatus(
+        loadReviewSlug
+          ? 'Changes saved — your review is updated and live on the site.'
+          : "Review published — it's live on the site.",
+      )
       if (sb) {
         const refresh = await sb.from('games').select('name, slug, catalog_rank').order('name')
         const gameRows = (refresh.data ?? []) as CatalogRankedGame[]
@@ -707,6 +712,7 @@ export function AddGamePage() {
         setRankedCatalogGames([...gameRows].sort((a, b) => a.catalog_rank - b.catalog_rank))
       }
     } catch (e) {
+      setSavedSlug(null)
       setSubmitStatus(e instanceof Error ? e.message : 'Save failed')
     } finally {
       setSubmitBusy(false)
@@ -1548,22 +1554,32 @@ export function AddGamePage() {
             {submitBusy ? 'Saving…' : loadReviewSlug ? 'Save changes' : 'Publish review'}
           </button>
           {submitStatus ? (
-            <p className="text-sm text-zinc-300">
-              {submitStatus}{' '}
+            <div
+              className={clsx(
+                'mt-1 space-y-2 rounded-lg border px-3 py-3 text-sm',
+                savedSlug
+                  ? 'border-emerald-500/35 bg-emerald-500/10 text-zinc-200'
+                  : 'border-rose-500/40 bg-rose-500/10 text-rose-100',
+              )}
+            >
+              <p>{submitStatus}</p>
               {savedSlug ? (
-                <Link
-                  className="font-semibold text-emerald-300 underline-offset-4 hover:underline"
-                  to={`/g/${savedSlug}?mode=${readReviewModePreference()}`}
-                >
-                  Open review
-                </Link>
-              ) : null}{' '}
-              {savedSlug ? (
-                <Link className="ml-2 font-semibold text-zinc-400 underline-offset-4 hover:underline" to="/">
-                  Home
-                </Link>
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Link
+                    className="font-semibold text-emerald-300 underline-offset-4 hover:underline"
+                    to={`/g/${savedSlug}?mode=${readReviewModePreference()}`}
+                  >
+                    Open review
+                  </Link>
+                  <span className="text-zinc-500" aria-hidden>
+                    ·
+                  </span>
+                  <Link className="font-semibold text-zinc-400 underline-offset-4 hover:underline" to="/">
+                    Home
+                  </Link>
+                </p>
               ) : null}
-            </p>
+            </div>
           ) : null}
         </section>
       </div>
