@@ -225,6 +225,10 @@ export function AddGamePage() {
     setCatalogRankPosition(rankedCatalogGames.length > 0 ? rankedCatalogGames.length + 1 : 1)
   }, [rankedCatalogGames])
 
+  /** Avoid putting `resetNewReviewForm` in effect deps — it changes when `rankedCatalogGames` updates and would re-run edit load after save, wiping success UI. */
+  const resetNewReviewFormRef = useRef(resetNewReviewForm)
+  resetNewReviewFormRef.current = resetNewReviewForm
+
   useEffect(() => {
     const client = sb
     if (!client) return
@@ -268,7 +272,7 @@ export function AddGamePage() {
     if (!sb) return
     if (!loadReviewSlug) {
       if (lastLoadedEditSlugRef.current !== '') {
-        resetNewReviewForm()
+        resetNewReviewFormRef.current()
       }
       lastLoadedEditSlugRef.current = ''
       setEditLoading(false)
@@ -382,7 +386,7 @@ export function AddGamePage() {
     return () => {
       cancelled = true
     }
-  }, [sb, loadReviewSlug, resetNewReviewForm])
+  }, [sb, loadReviewSlug])
 
   useEffect(() => {
     const q = hltbQuery.trim()

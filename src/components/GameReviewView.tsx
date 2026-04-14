@@ -367,7 +367,7 @@ export function GameReviewView({
             <p
               className={clsx(
                 theme.fontBody,
-                'mt-4 text-sm leading-relaxed',
+                'mt-4 whitespace-pre-line text-sm leading-relaxed',
                 mode === 'light' ? 'text-zinc-700' : 'text-[#f4e9d8]/85',
               )}
             >
