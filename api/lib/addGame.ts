@@ -105,7 +105,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   }
 
   const shift = await shiftCatalogRanksUpFrom(sb, catalogRank)
-  if (!shift.ok) return { ok: false, status: 500, error: shift.error }
+  if (shift.ok === false) return { ok: false, status: 500, error: shift.error }
 
   const reviewed = buildReviewedLookup(gamesForLink ?? [])
   const play_if_liked = resolvePlayIfLiked(playPicks, reviewed)

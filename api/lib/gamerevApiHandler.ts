@@ -6,6 +6,7 @@ import { updateGameFromBody } from './updateGame.js'
 import { fetchIgdbGenreMatches } from './igdbGenres.js'
 import { getServiceSupabase } from './supabaseAdmin.js'
 import { sampleCoverAccentFromUrl } from './sampleCoverAccentFromUrl.js'
+import type { ServerProcessEnv } from './serverEnv.js'
 
 const hltb = new HowLongToBeatService()
 
@@ -15,7 +16,7 @@ export type GamerevApiHandlerInput = {
   searchParams: URLSearchParams
   /** Parsed JSON for POST; omit for GET. */
   jsonBody?: unknown
-  env: NodeJS.ProcessEnv
+  env: ServerProcessEnv
 }
 
 export type GamerevApiHandlerResult = { status: number; body: unknown }

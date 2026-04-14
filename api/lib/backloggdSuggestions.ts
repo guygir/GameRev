@@ -4,6 +4,7 @@
  */
 
 import { refineBackloggdWithLlm } from './backloggdLlmRefine.js'
+import type { ServerProcessEnv } from './serverEnv.js'
 
 const BACKLOGGD_ORIGIN = 'https://backloggd.com'
 const FETCH_TIMEOUT_MS = 22_000
@@ -245,7 +246,7 @@ export type BackloggdSuggestionsResult = {
 
 export async function fetchBackloggdSuggestions(
   rawQuery: string,
-  options: { useLlm?: boolean; env?: NodeJS.ProcessEnv } = {},
+  options: { useLlm?: boolean; env?: ServerProcessEnv } = {},
 ): Promise<{ ok: true; data: BackloggdSuggestionsResult } | { ok: false; error: string }> {
   const query = rawQuery.trim()
   if (query.length < 2) return { ok: false, error: 'Query too short (need at least 2 characters).' }
@@ -253,7 +254,7 @@ export async function fetchBackloggdSuggestions(
 
   const searchUrl = `${BACKLOGGD_ORIGIN}/search/results.turbo_stream?page=1&query=${encodeURIComponent(query)}&type=games`
   const searchRes = await fetchText(searchUrl)
-  if (!searchRes.ok) return searchRes
+  if (!searchRes.ok) return { ok: false, error: searchRes.error }
 
   const hit = parseFirstSearchHit(searchRes.text)
   if (!hit) {
@@ -262,12 +263,12 @@ export async function fetchBackloggdSuggestions(
 
   const gameUrl = `${BACKLOGGD_ORIGIN}/games/${hit.slug}/`
   const gameRes = await fetchText(gameUrl)
-  if (!gameRes.ok) return gameRes
+  if (!gameRes.ok) return { ok: false, error: gameRes.error }
 
   const genres = extractGenresFromGamePage(gameRes.text)
   const reviewsUrl = `${BACKLOGGD_ORIGIN}/reviews/fetch/recent.turbo_stream?game_id=${encodeURIComponent(hit.gameId)}`
   const reviewsRes = await fetchText(reviewsUrl)
-  if (!reviewsRes.ok) return reviewsRes
+  if (!reviewsRes.ok) return { ok: false, error: reviewsRes.error }
 
   const reviewBodies = extractReviewBodiesFromTurbo(reviewsRes.text)
 

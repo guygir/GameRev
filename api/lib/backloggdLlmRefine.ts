@@ -1,3 +1,5 @@
+import type { ServerProcessEnv } from './serverEnv.js'
+
 /**
  * Optional cloud LLM pass for Backloggd-derived tags, play-if-liked, pros, and cons.
  * Uses OpenAI (paid, cheap on gpt-4o-mini) or Google Gemini (often has a free tier) — no local GPU.
@@ -25,7 +27,7 @@ const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
  */
 const GEMINI_TRY_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'] as const
 
-function geminiModelsToTry(env: NodeJS.ProcessEnv): string[] {
+function geminiModelsToTry(env: ServerProcessEnv): string[] {
   const primary = (env.GEMINI_MODEL ?? '').trim()
   const ordered = primary ? [primary, ...GEMINI_TRY_MODELS] : [...GEMINI_TRY_MODELS]
   const seen = new Set<string>()
@@ -187,7 +189,7 @@ function nonempty(out: LlmRefineOutput): boolean {
 }
 
 export async function refineBackloggdWithLlm(
-  env: NodeJS.ProcessEnv,
+  env: ServerProcessEnv,
   input: LlmRefineInput,
 ): Promise<{ ok: true; data: LlmRefineOutput } | { ok: false; error: string }> {
   const openai = (env.OPENAI_API_KEY ?? '').trim()
