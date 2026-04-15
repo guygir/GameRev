@@ -41,11 +41,23 @@ function axisTipText(axis: GameStatAxis, stats: GameStats) {
 }
 
 const RADAR_LABEL_FS = 10
-/** Approximate horizontal advance per em for axis labels (bold ~600, sans). */
-const RADAR_LABEL_CHAR_EM = 0.53
-const RADAR_LABEL_LINE = RADAR_LABEL_FS * 1.2
-/** Ring / fill stroke + vertex dots (~3px) outside nominal `r`. */
-const RADAR_GEOM_SLOP = 4
+
+type FillPadOpts = {
+  labelFs: number
+  charEm: number
+  labelLine: number
+  geomSlop: number
+  padSlack: number
+}
+
+/** Tight bbox + slightly optimistic width so fill-container uses minimal square viewBox (max scale). */
+const FILL_CONTAINER_PAD: FillPadOpts = {
+  labelFs: 11,
+  charEm: 0.495,
+  labelLine: 11 * 1.12,
+  geomSlop: 1.5,
+  padSlack: 0.15,
+}
 
 /**
  * Smallest symmetric pad so chart + labels fit in `[−pad, size+pad]²` (then `meet` fills the square with no clip loss).
@@ -57,6 +69,7 @@ function fillContainerSquarePad(
   r: number,
   labelRadius: number,
   n: number,
+  o: FillPadOpts,
 ): number {
   let minX = Infinity
   let maxX = -Infinity
@@ -77,14 +90,14 @@ function fillContainerSquarePad(
     const y = cy + r * Math.sin(angle)
     grow(x, y, x, y)
   }
-  grow(cx - r - RADAR_GEOM_SLOP, cy - r - RADAR_GEOM_SLOP, cx + r + RADAR_GEOM_SLOP, cy + r + RADAR_GEOM_SLOP)
+  grow(cx - r - o.geomSlop, cy - r - o.geomSlop, cx + r + o.geomSlop, cy + r + o.geomSlop)
 
   for (let i = 0; i < statAxes.length; i++) {
     const axis = statAxes[i]
     const angle = (Math.PI * 2 * i) / n - Math.PI / 2
     const lx = cx + labelRadius * Math.cos(angle)
     const ly = cy + labelRadius * Math.sin(angle)
-    const textW = axis.length * RADAR_LABEL_FS * RADAR_LABEL_CHAR_EM
+    const textW = axis.length * o.labelFs * o.charEm
 
     const anchor: 'start' | 'middle' | 'end' =
       Math.abs(Math.cos(angle)) < 0.2
@@ -113,19 +126,18 @@ function fillContainerSquarePad(
     let top = ly
     let bottom = ly
     if (baseline === 'hanging') {
-      bottom = ly + RADAR_LABEL_LINE
+      bottom = ly + o.labelLine
     } else if (baseline === 'middle') {
-      top = ly - RADAR_LABEL_LINE / 2
-      bottom = ly + RADAR_LABEL_LINE / 2
+      top = ly - o.labelLine / 2
+      bottom = ly + o.labelLine / 2
     } else {
-      top = ly - RADAR_LABEL_LINE * 0.72
-      bottom = ly + RADAR_LABEL_LINE * 0.28
+      top = ly - o.labelLine * 0.72
+      bottom = ly + o.labelLine * 0.28
     }
     grow(left, top, right, bottom)
   }
 
-  const need =
-    Math.max(0, -minX, maxX - size, -minY, maxY - size) + 1.5 // subpixel / AA slack
+  const need = Math.max(0, -minX, maxX - size, -minY, maxY - size) + o.padSlack
   return Math.ceil(need * 100) / 100
 }
 
@@ -173,10 +185,13 @@ export function StatRadar({
 
   const cx = size / 2
   const cy = size / 2
-  const r = size * 0.36
+  const r = size * (fillContainer ? 0.395 : 0.36)
   const n = statAxes.length
-  const labelRadius = r + 18
-  const layoutPad = fillContainer ? fillContainerSquarePad(size, cx, cy, r, labelRadius, n) : 0
+  const labelRadius = r + (fillContainer ? 15.5 : 18)
+  const labelFs = fillContainer ? FILL_CONTAINER_PAD.labelFs : RADAR_LABEL_FS
+  const layoutPad = fillContainer
+    ? fillContainerSquarePad(size, cx, cy, r, labelRadius, n, FILL_CONTAINER_PAD)
+    : 0
   const vbSize = size + 2 * layoutPad
 
   const pointFor = (value: number, i: number) => {
@@ -249,7 +264,7 @@ export function StatRadar({
             fill="none"
             stroke={gridStroke}
             strokeOpacity={0.35}
-            strokeWidth={1}
+            strokeWidth={fillContainer ? 1.08 : 1}
             pointerEvents="none"
           />
         ))}
@@ -278,7 +293,7 @@ export function StatRadar({
               y2={y2}
               stroke={gridStroke}
               strokeOpacity={0.35}
-              strokeWidth={1}
+              strokeWidth={fillContainer ? 1.08 : 1}
               pointerEvents="none"
             />
           )
@@ -288,7 +303,7 @@ export function StatRadar({
           fill={fill}
           fillOpacity={0.35}
           stroke={stroke}
-          strokeWidth={2}
+          strokeWidth={fillContainer ? 2.2 : 2}
           strokeLinejoin="round"
           pointerEvents="none"
         />
@@ -299,7 +314,7 @@ export function StatRadar({
               key={`dot-${axis}`}
               cx={p.x}
               cy={p.y}
-              r={3}
+              r={fillContainer ? 3.35 : 3}
               fill={stroke}
               pointerEvents="none"
             />
@@ -314,7 +329,7 @@ export function StatRadar({
               key={`hit-label-${axis}`}
               cx={lx}
               cy={ly}
-              r={26}
+              r={fillContainer ? 28 : 26}
               fill="transparent"
               pointerEvents="all"
               style={{ cursor: 'help' }}
@@ -348,7 +363,7 @@ export function StatRadar({
               textAnchor={anchor as 'start' | 'middle' | 'end'}
               dominantBaseline={baseline as 'auto' | 'middle' | 'hanging'}
               fill={labelColor}
-              fontSize={RADAR_LABEL_FS}
+              fontSize={labelFs}
               fontWeight={600}
               style={{ fontFamily: 'inherit', pointerEvents: 'none' }}
             >

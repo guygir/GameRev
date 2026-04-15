@@ -8,13 +8,18 @@ export type GameStatAxis =
 
 export type GameStats = Record<GameStatAxis, number>
 
+/**
+ * Vertex order = clockwise from top (−90°). Eastern vertices (−30°, +30°): Narrative + Value so
+ * the right side isn’t all short words (balances visual weight vs the left). Presentation on the
+ * bottom (+90°). Fun on the lower-left (150°) after the swap with Narrative.
+ */
 export const statAxes: GameStatAxis[] = [
-  'Value',
   'Architecture',
-  'Presentation',
   'Narrative',
-  'Novelty',
+  'Value',
+  'Presentation',
   'Fun',
+  'Novelty',
 ]
 
 export const statAxisTooltips: Record<GameStatAxis, string> = {

@@ -6,12 +6,12 @@ import type { ReviewMode } from '../review/getReviewTheme'
  * Horizontal semi-axis: arc endpoints at x = 100 and 500 match the centers of three equal
  * label columns (0–200, 200–400, 400–600) so “unknown” / “mainstream” sit under the arc ends.
  */
-const RX = 200
-/** Vertical semi-axis: shallow arc. */
-const RY = 78
+const RX = 208
+/** Vertical semi-axis: shallow arc (slightly taller = gauge reads larger). */
+const RY = 84
 const CX = 300
-/** Chord (flat base of the semicircle). */
-const CY = 170
+/** Chord (flat base of the semicircle); sits a bit lower so arc sits closer to caption row. */
+const CY = 176
 const ARC_D = `M ${CX - RX} ${CY} A ${RX} ${RY} 0 1 1 ${CX + RX} ${CY}`
 
 /** Ramanujan ellipse perimeter; upper arc ≈ half. */
@@ -24,10 +24,16 @@ function semiEllipseArcLength(rx: number, ry: number): number {
 }
 
 const ARC_LEN = semiEllipseArcLength(RX, RY)
-const STROKE = 18
-/** Lift % into the bowl so production / tight viewBoxes don’t clip the bottom of the figures. */
-const PCT_BASELINE_Y = CY - 14
-const FONT_SIZE_VB = 36
+const STROKE = 20
+/** Slightly lower in the bowl (larger y) so it sits closer to the scale captions. */
+const PCT_BASELINE_Y = CY - 9
+const FONT_SIZE_VB = 44
+
+/**
+ * Arc + % only; keep a modest band below the % for stroke/glow without a large empty gap before HTML captions.
+ */
+const VIEW_Y0 = 48
+const VIEW_HEIGHT = 162
 
 function arcGradientStops(hue: number, mode: ReviewMode): { a: string; b: string; c: string; track: string } {
   if (mode === 'dark') {
@@ -73,18 +79,25 @@ export function PopularityGauge({
   const textFill = isDark ? '#fff4e4' : '#18181b'
 
   return (
-    <section className="w-full" aria-label={`Steam store popularity snapshot, ${pct}`}>
-      <div className="mx-auto w-full max-w-[min(100%,36rem)]">
-        {/* Room above arc peak and below % baseline (production was clipping the %). */}
-        <svg viewBox="0 52 600 140" className="block h-auto w-full" aria-hidden>
+    <section
+      className="w-full overflow-visible pb-1.5"
+      aria-label={`Steam store popularity snapshot, ${pct}. Scale: unknown, niche, mainstream.`}
+    >
+      <div className="mx-auto w-full max-w-[min(100%,36rem)] overflow-visible px-0.5">
+        <svg
+          viewBox={`0 ${VIEW_Y0} 600 ${VIEW_HEIGHT}`}
+          className="block h-auto w-full overflow-visible"
+          overflow="visible"
+          aria-hidden
+        >
           <defs>
             <linearGradient id={`${gid}-arc`} x1="0%" y1="50%" x2="100%" y2="50%">
               <stop offset="0%" stopColor={stops.a} />
               <stop offset="50%" stopColor={stops.b} />
               <stop offset="100%" stopColor={stops.c} />
             </linearGradient>
-            <filter id={`${gid}-glow`} x="-45%" y="-45%" width="190%" height="190%">
-              <feGaussianBlur stdDeviation={isDark ? 2.4 : 1.6} result="b" />
+            <filter id={`${gid}-glow`} x="-35%" y="-35%" width="170%" height="170%">
+              <feGaussianBlur stdDeviation={isDark ? 2.2 : 1.5} result="b" />
               <feMerge>
                 <feMergeNode in="b" />
                 <feMergeNode in="SourceGraphic" />
@@ -123,19 +136,19 @@ export function PopularityGauge({
             {pct}
           </text>
         </svg>
-      </div>
 
-      <div
-        className={clsx(
-          'mt-1.5 grid w-full grid-cols-3 items-start gap-2 px-0 leading-snug sm:gap-3',
-          fontBodyClass,
-          'text-[0.8125rem] font-semibold uppercase tracking-[0.11em] sm:text-sm sm:tracking-[0.13em]',
-          labelTone,
-        )}
-      >
-        <span className="w-full text-center">unknown</span>
-        <span className="w-full text-center">niche</span>
-        <span className="w-full text-center">mainstream</span>
+        <div
+          className={clsx(
+            'mt-1 grid w-full grid-cols-3 items-start gap-2 px-0 pb-1 pt-0 leading-snug sm:gap-3',
+            fontBodyClass,
+            'text-base font-semibold uppercase tracking-[0.09em] sm:text-lg sm:tracking-[0.11em]',
+            labelTone,
+          )}
+        >
+          <span className="w-full text-center">unknown</span>
+          <span className="w-full text-center">niche</span>
+          <span className="w-full text-center">mainstream</span>
+        </div>
       </div>
     </section>
   )

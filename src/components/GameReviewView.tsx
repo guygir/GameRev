@@ -320,9 +320,14 @@ export function GameReviewView({
               </div>
             </div>
 
-            <div className="order-1 flex flex-col gap-10 md:order-2 md:col-span-7">
+            <div className="order-1 flex flex-col gap-6 md:order-2 md:col-span-7">
               {vm.visibilityScore != null && Number.isFinite(vm.visibilityScore) ? (
-                <div className={clsx(theme.radarPanel, 'px-3 py-2 md:px-4 md:py-2.5')}>
+                <div
+                  className={clsx(
+                    theme.radarPanel,
+                    'overflow-visible px-3 py-2 pb-3 md:px-4 md:py-2.5 md:pb-4',
+                  )}
+                >
                   <PopularityGauge
                     value={vm.visibilityScore}
                     mode={mode}

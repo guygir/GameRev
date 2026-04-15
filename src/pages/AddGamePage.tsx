@@ -11,6 +11,7 @@ import {
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference } from '../lib/reviewModePreference'
 import { parseReleaseYearFromLabel } from '../lib/parseReleaseYearFromLabel'
+import type { CommentRow } from '../types/game'
 
 type HltbHit = {
   id: string
@@ -190,6 +191,9 @@ export function AddGamePage() {
   const [savedSlug, setSavedSlug] = useState<string | null>(null)
   const [editLoading, setEditLoading] = useState(false)
   const [editLoadError, setEditLoadError] = useState<string | null>(null)
+  const [editComments, setEditComments] = useState<CommentRow[]>([])
+  const [editCommentsErr, setEditCommentsErr] = useState<string | null>(null)
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
 
   /** Tracks last loaded edit slug so we only reset the form when switching away from an edit, not on first paint. */
   const lastLoadedEditSlugRef = useRef<string>('')
@@ -239,6 +243,9 @@ export function AddGamePage() {
     setSteamErr(null)
     setSubmitStatus(null)
     setSavedSlug(null)
+    setEditComments([])
+    setEditCommentsErr(null)
+    setDeletingCommentId(null)
     catalogDefaultAppendDoneRef.current = true
     setCatalogRankPosition(rankedCatalogGames.length > 0 ? rankedCatalogGames.length + 1 : 1)
   }, [rankedCatalogGames])
@@ -295,6 +302,9 @@ export function AddGamePage() {
       lastLoadedEditSlugRef.current = ''
       setEditLoading(false)
       setEditLoadError(null)
+      setEditComments([])
+      setEditCommentsErr(null)
+      setDeletingCommentId(null)
       return
     }
     let cancelled = false
@@ -304,8 +314,12 @@ export function AddGamePage() {
       setSavedSlug(null)
       setAccentMsg(null)
       setCatalogRankPosition(null)
+      setEditComments([])
+      setEditCommentsErr(null)
+      setDeletingCommentId(null)
     void (async () => {
       type GameEditRow = {
+        id: string
         name: string
         subtitle: string
         catalog_rank: number
@@ -332,6 +346,7 @@ export function AddGamePage() {
         .from('games')
         .select(
           `
+          id,
           name,
           subtitle,
           catalog_rank,
@@ -369,6 +384,19 @@ export function AddGamePage() {
         return
       }
       const row = data as GameEditRow
+      const { data: commentRows, error: commentsErr } = await sb
+        .from('comments')
+        .select('id, game_id, body, author_name, created_at')
+        .eq('game_id', row.id)
+        .order('created_at', { ascending: false })
+      if (cancelled) return
+      if (commentsErr) {
+        setEditComments([])
+        setEditCommentsErr(commentsErr.message)
+      } else {
+        setEditComments((commentRows ?? []) as CommentRow[])
+        setEditCommentsErr(null)
+      }
       setName(row.name)
       setSubtitle(row.subtitle)
       setCatalogRankPosition(
@@ -850,6 +878,40 @@ export function AddGamePage() {
     steamReviewCount,
     visibilityScore,
   ])
+
+  const deleteEditComment = useCallback(
+    async (commentId: string) => {
+      if (!loadReviewSlug) return
+      if (!password.trim()) {
+        setEditCommentsErr('Enter the publish password in the section below, then delete again.')
+        return
+      }
+      if (!window.confirm('Remove this reader comment from the database? This cannot be undone.')) {
+        return
+      }
+      setDeletingCommentId(commentId)
+      setEditCommentsErr(null)
+      try {
+        const res = await fetch('/api/delete-comment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            password,
+            commentId,
+            slug: loadReviewSlug,
+          }),
+        })
+        const json = (await res.json()) as { error?: string }
+        if (!res.ok) throw new Error(json.error ?? 'Delete failed')
+        setEditComments((prev) => prev.filter((c) => c.id !== commentId))
+      } catch (e) {
+        setEditCommentsErr(e instanceof Error ? e.message : 'Delete failed')
+      } finally {
+        setDeletingCommentId(null)
+      }
+    },
+    [loadReviewSlug, password],
+  )
 
   if (!sb) {
     return (
@@ -1726,6 +1788,54 @@ export function AddGamePage() {
             placeholder="Short verdict for skimmers—no spoilers, your own words."
           />
         </section>
+
+        {loadReviewSlug && !editLoading && !editLoadError ? (
+          <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+            <h2 className="text-lg font-semibold text-white">Reader comments</h2>
+            <p className="text-xs leading-relaxed text-zinc-500">
+              Public comments on <span className="font-mono text-zinc-400">/g/{loadReviewSlug}</span>. Deleting removes
+              the row from Supabase only (GitHub issue mirrors are not removed automatically).
+            </p>
+            {editCommentsErr ? <p className="text-sm text-rose-300">{editCommentsErr}</p> : null}
+            {editComments.length === 0 ? (
+              <p className="text-sm text-zinc-500">No comments on this review yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {editComments.map((c) => {
+                  const preview =
+                    c.body.length > 280 ? `${c.body.slice(0, 280).trimEnd()}…` : c.body
+                  const when = new Date(c.created_at).toLocaleString(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })
+                  return (
+                    <li
+                      key={c.id}
+                      className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 text-sm text-zinc-300"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-xs text-zinc-500">
+                          <span className="font-medium text-zinc-400">{c.author_name?.trim() || 'Anonymous'}</span>
+                          <span className="mx-1.5 text-zinc-600">·</span>
+                          <time dateTime={c.created_at}>{when}</time>
+                        </p>
+                        <button
+                          type="button"
+                          disabled={deletingCommentId !== null}
+                          onClick={() => void deleteEditComment(c.id)}
+                          className="shrink-0 rounded border border-rose-900/60 bg-rose-950/50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-200 hover:border-rose-700 hover:bg-rose-950 disabled:opacity-50"
+                        >
+                          {deletingCommentId === c.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-zinc-200">{preview}</p>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+        ) : null}
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold text-white">Publish password</h2>

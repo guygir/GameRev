@@ -7,6 +7,7 @@ import { fetchIgdbGenreMatches } from './igdbGenres.js'
 import { getServiceSupabase } from './supabaseAdmin.js'
 import { sampleCoverAccentFromUrl } from './sampleCoverAccentFromUrl.js'
 import { syncReaderCommentToGithub } from './githubGameComments.js'
+import { deleteReaderCommentFromBody } from './deleteReaderComment.js'
 import { fetchSteamVisibility } from './steamPopularity.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
@@ -110,6 +111,17 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       })
       if (out.ok === false) return { status: out.status, body: { error: out.error } }
       return { status: 200, body: { slug: out.slug } }
+    }
+
+    if (method === 'POST' && route === 'delete-comment') {
+      const body = jsonBody ?? {}
+      const out = await deleteReaderCommentFromBody(body, {
+        supabaseUrl: env.VITE_SUPABASE_URL ?? env.SUPABASE_URL ?? '',
+        serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+        addGamePassword: env.ADD_GAME_PASSWORD ?? '',
+      })
+      if (out.ok === false) return { status: out.status, body: { error: out.error } }
+      return { status: 200, body: { ok: true } }
     }
 
     if (method === 'GET' && route === 'steam-visibility') {
