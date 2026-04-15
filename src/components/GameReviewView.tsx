@@ -157,7 +157,7 @@ export function GameReviewView({
             Long-form review
           </p>
           <div className="mt-6 grid items-end gap-8 md:grid-cols-12">
-            <div className="md:col-span-7">
+            <div className="md:col-span-6">
               <h1
                 className={clsx('motion-rise', theme.fontDisplay, theme.title)}
                 style={{ ['--motion-rise-delay' as string]: '120ms' }}
@@ -212,7 +212,7 @@ export function GameReviewView({
               ) : null}
             </div>
             <div
-              className="motion-rise md:col-span-5 md:-translate-y-6 md:justify-self-end"
+              className="motion-rise md:col-span-6 md:-translate-y-6 md:justify-self-end"
               style={{ ['--motion-rise-delay' as string]: '260ms' }}
             >
               <div className={theme.coverFrame}>
@@ -228,7 +228,7 @@ export function GameReviewView({
           style={{ ['--motion-rise-delay' as string]: '320ms' }}
         >
           <div className="grid gap-10 md:grid-cols-12">
-            <div className="order-2 space-y-8 md:order-1 md:col-span-5">
+            <div className="order-2 space-y-8 md:order-1 md:col-span-6">
               <div>
                 <h2 className={clsx(theme.fontDisplay, theme.h2)}>How long to beat</h2>
                 <dl className="mt-4 grid grid-cols-3 gap-2 text-sm sm:gap-3">
@@ -320,7 +320,7 @@ export function GameReviewView({
               </div>
             </div>
 
-            <div className="order-1 flex flex-col gap-6 md:order-2 md:col-span-7">
+            <div className="order-1 flex flex-col gap-6 md:order-2 md:col-span-6">
               {vm.visibilityScore != null && Number.isFinite(vm.visibilityScore) ? (
                 <div
                   className={clsx(
