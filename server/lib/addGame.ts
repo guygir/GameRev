@@ -6,6 +6,9 @@ import {
   normalizePlayIfLiked,
   normalizeStringList,
   normalizeSummaryText,
+  optionalSteamAppId,
+  optionalSteamReviewCount,
+  optionalVisibilityScore01,
   parseStats,
   resolveAccentHueFromBody,
   resolvePlayIfLiked,
@@ -76,6 +79,9 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   const pros = normalizeStringList(b.pros, 40, 600)
   const cons = normalizeStringList(b.cons, 40, 600)
   const summary = normalizeSummaryText(b.summary, 12_000)
+  const steam_app_id = optionalSteamAppId(b.steamAppId)
+  const steam_review_count = optionalSteamReviewCount(b.steamReviewCount)
+  const visibility_score = optionalVisibilityScore01(b.visibilityScore)
   const playPicks = normalizePlayIfLiked(b.playIfLiked, 16)
 
   const numOrNull = (v: unknown): number | null => {
@@ -142,6 +148,11 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
       accent_hue,
       accent_preset: null,
       catalog_rank: catalogRank,
+      ...(steam_app_id != null &&
+      steam_review_count != null &&
+      visibility_score != null
+        ? { steam_app_id, steam_review_count, visibility_score }
+        : {}),
     })
     .select('id')
     .single()

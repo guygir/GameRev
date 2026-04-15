@@ -31,6 +31,7 @@ type GameJoinRow = {
   play_if_liked: PlayIfLikedStored[]
   game_genres: { genre: string }[] | null
   game_tags: { tag: string }[] | null
+  visibility_score?: number | null
 }
 
 function isGameStats(raw: unknown): raw is GameStats {
@@ -96,7 +97,8 @@ export function GameReviewPage() {
           summary,
           play_if_liked,
           game_genres ( genre ),
-          game_tags ( tag )
+          game_tags ( tag ),
+          visibility_score
         `,
         )
         .eq('slug', slug)
@@ -153,6 +155,10 @@ export function GameReviewPage() {
         accentPreset:
           typeof row.accent_preset === 'number' && row.accent_preset >= 0 && row.accent_preset <= 4
             ? row.accent_preset
+            : null,
+        visibilityScore:
+          typeof row.visibility_score === 'number' && Number.isFinite(row.visibility_score)
+            ? Math.min(1, Math.max(0, row.visibility_score))
             : null,
       }
 

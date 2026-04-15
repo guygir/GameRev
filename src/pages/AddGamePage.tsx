@@ -10,6 +10,7 @@ import {
 } from '../review/reviewDarkAccent'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference } from '../lib/reviewModePreference'
+import { parseReleaseYearFromLabel } from '../lib/parseReleaseYearFromLabel'
 
 type HltbHit = {
   id: string
@@ -174,6 +175,13 @@ export function AddGamePage() {
   const [consText, setConsText] = useState('')
   const [summaryText, setSummaryText] = useState('')
 
+  const [steamAppId, setSteamAppId] = useState<number | null>(null)
+  const [steamReviewCount, setSteamReviewCount] = useState<number | null>(null)
+  const [visibilityScore, setVisibilityScore] = useState<number | null>(null)
+  const [steamResolvedName, setSteamResolvedName] = useState<string | null>(null)
+  const [steamBusy, setSteamBusy] = useState(false)
+  const [steamErr, setSteamErr] = useState<string | null>(null)
+
   const [submitStatus, setSubmitStatus] = useState<string | null>(null)
   const [submitBusy, setSubmitBusy] = useState(false)
   const [savedSlug, setSavedSlug] = useState<string | null>(null)
@@ -219,6 +227,12 @@ export function AddGamePage() {
     setProsText('')
     setConsText('')
     setSummaryText('')
+    setSteamAppId(null)
+    setSteamReviewCount(null)
+    setVisibilityScore(null)
+    setSteamResolvedName(null)
+    setSteamBusy(false)
+    setSteamErr(null)
     setSubmitStatus(null)
     setSavedSlug(null)
     catalogDefaultAppendDoneRef.current = true
@@ -306,6 +320,9 @@ export function AddGamePage() {
         play_if_liked: { name: string; slug?: string | null }[] | null
         game_genres: { genre: string }[] | null
         game_tags: { tag: string }[] | null
+        steam_app_id: number | null
+        steam_review_count: number | null
+        visibility_score: number | null
       }
       const { data, error } = await sb
         .from('games')
@@ -328,7 +345,10 @@ export function AddGamePage() {
           summary,
           play_if_liked,
           game_genres ( genre ),
-          game_tags ( tag )
+          game_tags ( tag ),
+          steam_app_id,
+          steam_review_count,
+          visibility_score
         `,
         )
         .eq('slug', loadReviewSlug)
@@ -380,6 +400,26 @@ export function AddGamePage() {
       setHltbQuery(row.name)
       setIgdbMatches([])
       setIgdbErr(null)
+      setSteamErr(null)
+      if (typeof row.steam_app_id === 'number' && row.steam_app_id > 0) {
+        setSteamAppId(row.steam_app_id)
+        setSteamReviewCount(
+          typeof row.steam_review_count === 'number' && row.steam_review_count >= 0
+            ? row.steam_review_count
+            : 0,
+        )
+        setVisibilityScore(
+          typeof row.visibility_score === 'number' && Number.isFinite(row.visibility_score)
+            ? Math.min(1, Math.max(0, row.visibility_score))
+            : 0,
+        )
+        setSteamResolvedName(null)
+      } else {
+        setSteamAppId(null)
+        setSteamReviewCount(null)
+        setVisibilityScore(null)
+        setSteamResolvedName(null)
+      }
       lastLoadedEditSlugRef.current = loadReviewSlug
       setEditLoading(false)
     })()
@@ -643,6 +683,54 @@ export function AddGamePage() {
     }
   }, [coverImageUrl])
 
+  const clearSteamSnapshot = useCallback(() => {
+    setSteamAppId(null)
+    setSteamReviewCount(null)
+    setVisibilityScore(null)
+    setSteamResolvedName(null)
+    setSteamErr(null)
+  }, [])
+
+  const fetchSteamSnapshot = useCallback(async () => {
+    const q = name.trim()
+    if (q.length < 2) {
+      setSteamErr('Enter at least two characters in the game name (used as the Steam search query).')
+      return
+    }
+    setSteamErr(null)
+    setSteamBusy(true)
+    try {
+      const ry = parseReleaseYearFromLabel(releaseLabel.trim() || null)
+      const sp = new URLSearchParams({ q })
+      if (ry != null) sp.set('releaseYear', String(ry))
+      const res = await fetch(`/api/steam-visibility?${sp}`)
+      const json = (await res.json()) as {
+        appId?: number
+        steamName?: string
+        totalReviews?: number
+        visibilityScore?: number
+        error?: string
+      }
+      if (!res.ok) throw new Error(json.error ?? 'Steam lookup failed')
+      if (
+        typeof json.appId !== 'number' ||
+        typeof json.totalReviews !== 'number' ||
+        typeof json.visibilityScore !== 'number'
+      ) {
+        throw new Error('Unexpected Steam response.')
+      }
+      setSteamAppId(json.appId)
+      setSteamReviewCount(json.totalReviews)
+      setVisibilityScore(json.visibilityScore)
+      setSteamResolvedName(typeof json.steamName === 'string' ? json.steamName : null)
+    } catch (e) {
+      clearSteamSnapshot()
+      setSteamErr(e instanceof Error ? e.message : 'Steam lookup failed')
+    } finally {
+      setSteamBusy(false)
+    }
+  }, [clearSteamSnapshot, name, releaseLabel])
+
   const submit = useCallback(async () => {
     setSubmitStatus(null)
     setSavedSlug(null)
@@ -666,6 +754,8 @@ export function AddGamePage() {
     setSubmitBusy(true)
     try {
       const playIfLiked = linesToList(playIfLikedText).map((n) => ({ name: n }))
+      const hasSteamForCreate =
+        steamAppId != null && steamReviewCount != null && visibilityScore != null
       const body = {
         password: password,
         name: name.trim(),
@@ -686,6 +776,9 @@ export function AddGamePage() {
         accentHue,
         catalogRank: catalogRankPosition,
         ...(loadReviewSlug ? { slug: loadReviewSlug } : {}),
+        ...(loadReviewSlug || hasSteamForCreate
+          ? { steamAppId, steamReviewCount, visibilityScore }
+          : {}),
       }
       const url = loadReviewSlug ? '/api/update-game' : '/api/add-game'
       const res = await fetch(url, {
@@ -745,6 +838,9 @@ export function AddGamePage() {
     selectedTags,
     stats,
     subtitle,
+    steamAppId,
+    steamReviewCount,
+    visibilityScore,
   ])
 
   if (!sb) {
@@ -1295,6 +1391,46 @@ export function AddGamePage() {
             Cover URL, platforms, and hours come from search; picking a result can refine them and fills subtitle from
             the HLTB game page when available. Release comes from IGDB when you use the button on a match.
           </p>
+
+          <div className="mt-6 rounded-xl border border-zinc-700/80 bg-zinc-950/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Steam footprint (optional)</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+              Resolves the Steam store title from your game name (like IGDB search), snapshots review totals, and saves
+              them with the review. Nothing auto-refreshes after publish.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={steamBusy || (!!loadReviewSlug && (editLoading || !!editLoadError))}
+                onClick={() => void fetchSteamSnapshot()}
+                className="rounded-lg bg-sky-600/90 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+              >
+                {steamBusy ? 'Querying Steam…' : 'Fetch Steam popularity'}
+              </button>
+              {steamAppId != null || steamReviewCount != null || visibilityScore != null ? (
+                <button
+                  type="button"
+                  disabled={steamBusy}
+                  onClick={clearSteamSnapshot}
+                  className="rounded-lg border border-zinc-600 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  Clear snapshot
+                </button>
+              ) : null}
+            </div>
+            {steamErr ? <p className="mt-2 text-xs text-rose-300">{steamErr}</p> : null}
+            {steamAppId != null && visibilityScore != null && steamReviewCount != null ? (
+              <p className="mt-3 text-xs text-zinc-400">
+                Matched <span className="font-medium text-zinc-200">{steamResolvedName ?? '—'}</span>
+                {' · '}
+                app <span className="font-mono text-zinc-300">{steamAppId}</span>
+                {' · '}
+                {steamReviewCount.toLocaleString()} reviews
+                {' · '}
+                needle <span className="font-mono text-zinc-300">{(visibilityScore * 100).toFixed(1)}%</span>
+              </p>
+            ) : null}
+          </div>
         </section>
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">

@@ -11,6 +11,7 @@ import {
   reviewDarkAccentCssVars,
 } from '../review/reviewDarkAccent'
 import clsx from 'clsx'
+import { PopularityGauge } from './PopularityGauge'
 
 export type GameReviewViewModel = {
   name: string
@@ -37,6 +38,8 @@ export type GameReviewViewModel = {
   accentHue: number | null
   /** Legacy `accent_preset` (0–4) when `accent_hue` is null. */
   accentPreset: number | null
+  /** Steam popularity needle 0–1; null hides the gauge. */
+  visibilityScore: number | null
 }
 
 function ReviewCoverFallback({ variant }: { variant: 'anthropic' | 'light' }) {
@@ -301,6 +304,16 @@ export function GameReviewView({
             </div>
 
             <div className="order-1 flex flex-col gap-10 md:order-2 md:col-span-7">
+              {vm.visibilityScore != null && Number.isFinite(vm.visibilityScore) ? (
+                <div
+                  className={clsx(
+                    'rounded-2xl border p-5',
+                    mode === 'light' ? 'border-zinc-200 bg-white' : 'border-white/10 bg-black/20',
+                  )}
+                >
+                  <PopularityGauge value={vm.visibilityScore} mode={mode} />
+                </div>
+              ) : null}
               <div>
                 <h2 className={clsx(theme.fontDisplay, theme.h2)}>How long to beat</h2>
                 <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">

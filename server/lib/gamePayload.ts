@@ -28,6 +28,31 @@ export type AddGameBody = {
   playIfLiked: { name: string }[]
   /** 1-based position in the catalog (1 = first). Required on add/update from the editor. */
   catalogRank?: number
+  /** Steam popularity (set from editor after `/api/steam-visibility`). */
+  steamAppId?: number | null
+  steamReviewCount?: number | null
+  visibilityScore?: number | null
+}
+
+export function optionalSteamAppId(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isInteger(n) || n < 1 || n > 2_147_483_647) return null
+  return n
+}
+
+export function optionalSteamReviewCount(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isInteger(n) || n < 0 || n > 500_000_000) return null
+  return n
+}
+
+export function optionalVisibilityScore01(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n) || n < 0 || n > 1) return null
+  return n
 }
 
 export function parseStats(raw: unknown): GameStats | null {

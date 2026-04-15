@@ -6,6 +6,8 @@ import { updateGameFromBody } from './updateGame.js'
 import { fetchIgdbGenreMatches } from './igdbGenres.js'
 import { getServiceSupabase } from './supabaseAdmin.js'
 import { sampleCoverAccentFromUrl } from './sampleCoverAccentFromUrl.js'
+import { syncReaderCommentToGithub } from './githubGameComments.js'
+import { fetchSteamVisibility } from './steamPopularity.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 const hltb = new HowLongToBeatService()
@@ -110,6 +112,33 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       return { status: 200, body: { slug: out.slug } }
     }
 
+    if (method === 'GET' && route === 'steam-visibility') {
+      const q = (searchParams.get('q') ?? '').trim()
+      const ryRaw = (searchParams.get('releaseYear') ?? '').trim()
+      const releaseYear =
+        ryRaw && /^\d{4}$/.test(ryRaw) ? parseInt(ryRaw, 10) : null
+      const out = await fetchSteamVisibility(q, releaseYear)
+      if ('error' in out) return { status: 422, body: { error: out.error } }
+      return { status: 200, body: out }
+    }
+
+    if (method === 'POST' && route === 'notify-comment') {
+      const body = (jsonBody ?? {}) as { commentId?: unknown }
+      const id = typeof body.commentId === 'string' ? body.commentId.trim() : ''
+      if (!/^[\da-f-]{36}$/i.test(id)) {
+        return { status: 400, body: { error: 'Invalid commentId' } }
+      }
+      const url = env.VITE_SUPABASE_URL ?? env.SUPABASE_URL ?? ''
+      const key = env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+      if (!url || !key) {
+        return { status: 503, body: { error: 'Supabase is not configured on the server' } }
+      }
+      const out = await syncReaderCommentToGithub(env, url, key, id)
+      if (out.ok === false) return { status: 502, body: { error: out.error } }
+      const skipped = out.ok && 'skipped' in out && out.skipped === true
+      return { status: 200, body: { ok: true, skipped } }
+    }
+
     if (method === 'POST' && route === 'backloggd-suggestions') {
       const body = (jsonBody ?? {}) as { query?: unknown; useLlm?: unknown }
       const q = typeof body.query === 'string' ? body.query : ''
@@ -158,7 +187,8 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
           play_if_liked,
           created_at,
           game_genres ( genre ),
-          game_tags ( tag )
+          game_tags ( tag ),
+          visibility_score
         `,
         )
         .eq('slug', slug)
@@ -187,7 +217,13 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         created_at: string
         game_genres: { genre: string }[] | null
         game_tags: { tag: string }[] | null
+        visibility_score: number | null
       }
+
+      const vis =
+        typeof row.visibility_score === 'number' && Number.isFinite(row.visibility_score)
+          ? Math.min(1, Math.max(0, row.visibility_score))
+          : null
 
       return {
         status: 200,
@@ -214,6 +250,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
             tags: (row.game_tags ?? []).map((r) => r.tag),
             createdAt: row.created_at,
             publishedAtLabel: formatReviewPublishedLabel(row.created_at),
+            visibilityScore: vis,
           },
         },
       }

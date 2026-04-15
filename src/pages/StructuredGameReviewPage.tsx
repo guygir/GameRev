@@ -42,6 +42,7 @@ export function StructuredGameReviewPage() {
       radarLabel: 'Signalis review stats radar chart',
       accentHue: null,
       accentPreset: null,
+      visibilityScore: 0.52,
     }),
     [],
   )

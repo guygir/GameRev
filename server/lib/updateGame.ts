@@ -5,6 +5,9 @@ import {
   normalizePlayIfLiked,
   normalizeStringList,
   normalizeSummaryText,
+  optionalSteamAppId,
+  optionalSteamReviewCount,
+  optionalVisibilityScore01,
   parseStats,
   resolveAccentHueFromBody,
   resolvePlayIfLiked,
@@ -76,6 +79,16 @@ export async function updateGameFromBody(
   const summary = normalizeSummaryText(b.summary, 12_000)
   const playPicks = normalizePlayIfLiked(b.playIfLiked, 16)
 
+  const rawBody = b as Record<string, unknown>
+  const patchSteam =
+    'steamAppId' in rawBody || 'steamReviewCount' in rawBody || 'visibilityScore' in rawBody
+      ? {
+          steam_app_id: optionalSteamAppId(b.steamAppId),
+          steam_review_count: optionalSteamReviewCount(b.steamReviewCount),
+          visibility_score: optionalVisibilityScore01(b.visibilityScore),
+        }
+      : null
+
   const numOrNull = (v: unknown): number | null => {
     if (v === null || v === undefined || v === '') return null
     const n = typeof v === 'number' ? v : Number(v)
@@ -135,6 +148,13 @@ export async function updateGameFromBody(
       cons,
       summary,
       play_if_liked,
+      ...(patchSteam
+        ? {
+            steam_app_id: patchSteam.steam_app_id,
+            steam_review_count: patchSteam.steam_review_count,
+            visibility_score: patchSteam.visibility_score,
+          }
+        : {}),
       ...accentRowPatch,
     })
     .eq('id', gameId)

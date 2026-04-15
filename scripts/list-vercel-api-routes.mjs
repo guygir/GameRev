@@ -49,6 +49,8 @@ const logical = [
   'POST /api/update-game',
   'POST /api/backloggd-suggestions',
   'POST /api/sample-cover-accent',
+  'GET  /api/steam-visibility',
+  'POST /api/notify-comment',
   'GET  /api/review',
 ]
 for (const l of logical) console.log(`  ${l}`)

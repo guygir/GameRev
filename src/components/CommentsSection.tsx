@@ -54,10 +54,18 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
       return
     }
     if (data) {
-      setComments((prev) => [data as CommentRow, ...prev])
+      const row = data as CommentRow
+      setComments((prev) => [row, ...prev])
       setBody('')
       setAuthorName('')
       setStatus('Posted.')
+      void fetch('/api/notify-comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commentId: row.id }),
+      }).catch(() => {
+        /* GitHub mirror is best-effort; comment is already saved */
+      })
     }
   }, [authorName, body, gameId, sb])
 
