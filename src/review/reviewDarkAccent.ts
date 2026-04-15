@@ -119,6 +119,20 @@ export function reviewDarkAccentCssVars(hue: number): CSSProperties {
   } as CSSProperties
 }
 
+/** Same variable names as dark; tuned for light review shells (off-white / zinc paper). */
+export function reviewLightAccentCssVars(hue: number): CSSProperties {
+  const h = ((hue % 360) + 360) % 360
+  return {
+    '--review-accent': `hsl(${h} 48% 42%)`,
+    '--review-accent-bright': `hsl(${h} 46% 32%)`,
+    '--review-accent-soft': `hsl(${h} 40% 52%)`,
+    '--review-accent-glow': `hsl(${h} 55% 54% / 0.22)`,
+    '--review-accent-glow-2': `hsl(${(h + 148) % 360} 48% 52% / 0.16)`,
+    '--review-accent-border': `hsl(${h} 34% 82% / 0.95)`,
+    '--review-accent-surface': `hsl(${h} 42% 97% / 0.92)`,
+  } as CSSProperties
+}
+
 export type HomeCatalogSurface = 'dark' | 'light'
 
 /**
@@ -165,5 +179,21 @@ export function darkRadarFromHue(hue: number): {
     stroke: hslToHex(h, 62, 78),
     grid: '#c4b8a8',
     label: '#b8aa9a',
+  }
+}
+
+/** Radar on white / light gray: slightly deeper fill for contrast. */
+export function lightRadarFromHue(hue: number): {
+  fill: string
+  stroke: string
+  grid: string
+  label: string
+} {
+  const h = ((hue % 360) + 360) % 360
+  return {
+    fill: hslToHex(h, 52, 48),
+    stroke: hslToHex(h, 48, 64),
+    grid: '#94a3b8',
+    label: '#64748b',
   }
 }

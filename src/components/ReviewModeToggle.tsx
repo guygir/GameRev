@@ -28,7 +28,7 @@ export function ReviewModeToggle({ mode, onChange, surface }: ReviewModeTogglePr
             mode === 'light'
               ? surface === 'home'
                 ? 'bg-emerald-500/25 text-emerald-100'
-                : 'bg-brand text-white'
+                : 'bg-[color:var(--review-accent,#8251ee)] text-white'
               : 'opacity-70 hover:opacity-100',
           )}
         >

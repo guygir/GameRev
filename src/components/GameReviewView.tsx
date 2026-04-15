@@ -9,6 +9,7 @@ import { getReviewTheme, type ReviewMode } from '../review/getReviewTheme'
 import {
   DEFAULT_DARK_REVIEW_ACCENT_HUE,
   reviewDarkAccentCssVars,
+  reviewLightAccentCssVars,
 } from '../review/reviewDarkAccent'
 import clsx from 'clsx'
 import { PopularityGauge } from './PopularityGauge'
@@ -92,11 +93,9 @@ export function GameReviewView({
   navHomeLabel,
   navHomeTo,
 }: GameReviewViewProps) {
+  /** Per-game accent (slug / DB); used for dark CSS vars and light gauge hue. */
   const accentHue = darkAccentHue ?? DEFAULT_DARK_REVIEW_ACCENT_HUE
-  const theme = useMemo(
-    () => getReviewTheme(mode, mode === 'dark' ? { darkAccentHue: accentHue } : undefined),
-    [mode, accentHue],
-  )
+  const theme = useMemo(() => getReviewTheme(mode, { accentHue }), [mode, accentHue])
 
   const cover = useMemo(() => {
     if (!vm.coverImageUrl) {
@@ -122,7 +121,7 @@ export function GameReviewView({
   return (
     <div
       className={clsx(theme.shell, theme.fontBody)}
-      style={mode === 'dark' ? reviewDarkAccentCssVars(accentHue) : undefined}
+      style={mode === 'dark' ? reviewDarkAccentCssVars(accentHue) : reviewLightAccentCssVars(accentHue)}
     >
       {theme.ambiance === 'anthropic' ? (
         <>
@@ -230,6 +229,24 @@ export function GameReviewView({
         >
           <div className="grid gap-10 md:grid-cols-12">
             <div className="order-2 space-y-8 md:order-1 md:col-span-5">
+              <div>
+                <h2 className={clsx(theme.fontDisplay, theme.h2)}>How long to beat</h2>
+                <dl className="mt-4 grid grid-cols-3 gap-2 text-sm sm:gap-3">
+                  <div className={theme.hltbCard}>
+                    <dt className={theme.hltbLabel}>Main</dt>
+                    <dd className={theme.hltbValue}>{vm.hltbMain}</dd>
+                  </div>
+                  <div className={theme.hltbCard}>
+                    <dt className={theme.hltbLabel}>Extras</dt>
+                    <dd className={theme.hltbValue}>{vm.hltbExtras}</dd>
+                  </div>
+                  <div className={theme.hltbCard}>
+                    <dt className={theme.hltbLabel}>100%</dt>
+                    <dd className={theme.hltbValue}>{vm.hltbCompletionist}</dd>
+                  </div>
+                </dl>
+              </div>
+
               {vm.platforms.length ? (
                 <div>
                   <h2 className={clsx(theme.fontDisplay, theme.h2)}>Platforms</h2>
@@ -280,7 +297,7 @@ export function GameReviewView({
                           className={clsx(
                             'font-medium underline decoration-transparent underline-offset-4 transition hover:decoration-current',
                             mode === 'light'
-                              ? 'text-brand hover:text-brand-hover'
+                              ? 'text-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]'
                               : 'text-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]',
                           )}
                           to={`/g/${pick.slug}?mode=${mode}`}
@@ -305,32 +322,16 @@ export function GameReviewView({
 
             <div className="order-1 flex flex-col gap-10 md:order-2 md:col-span-7">
               {vm.visibilityScore != null && Number.isFinite(vm.visibilityScore) ? (
-                <div
-                  className={clsx(
-                    'rounded-2xl border p-5',
-                    mode === 'light' ? 'border-zinc-200 bg-white' : 'border-white/10 bg-black/20',
-                  )}
-                >
-                  <PopularityGauge value={vm.visibilityScore} mode={mode} />
+                <div className={clsx(theme.radarPanel, 'px-3 py-2 md:px-4 md:py-2.5')}>
+                  <PopularityGauge
+                    value={vm.visibilityScore}
+                    mode={mode}
+                    accentHue={accentHue}
+                    fontDisplayClass={theme.fontDisplay}
+                    fontBodyClass={theme.fontBody}
+                  />
                 </div>
               ) : null}
-              <div>
-                <h2 className={clsx(theme.fontDisplay, theme.h2)}>How long to beat</h2>
-                <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                  <div className={theme.hltbCard}>
-                    <dt className={theme.hltbLabel}>Main</dt>
-                    <dd className={theme.hltbValue}>{vm.hltbMain}</dd>
-                  </div>
-                  <div className={theme.hltbCard}>
-                    <dt className={theme.hltbLabel}>Extras</dt>
-                    <dd className={theme.hltbValue}>{vm.hltbExtras}</dd>
-                  </div>
-                  <div className={theme.hltbCard}>
-                    <dt className={theme.hltbLabel}>100%</dt>
-                    <dd className={theme.hltbValue}>{vm.hltbCompletionist}</dd>
-                  </div>
-                </dl>
-              </div>
               <div className={clsx(theme.radarPanel, 'flex min-h-[min(48dvh,520px)] flex-col')}>
                 <div className={theme.radarGlow} />
                 <div className="relative flex min-h-0 min-w-0 flex-1 flex-col p-0">

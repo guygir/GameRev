@@ -56,7 +56,10 @@ export function Home() {
   const [catalogSort, setCatalogSort] = useState<HomeCatalogSort>(() => readHomeCatalogSortPreference())
   const homeTheme = useMemo(
     () =>
-      getReviewTheme(homeMode, homeMode === 'dark' ? { darkAccentHue: DEFAULT_DARK_REVIEW_ACCENT_HUE } : undefined),
+      getReviewTheme(
+        homeMode,
+        homeMode === 'dark' ? { accentHue: DEFAULT_DARK_REVIEW_ACCENT_HUE } : undefined,
+      ),
     [homeMode],
   )
 

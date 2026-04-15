@@ -6,6 +6,7 @@ import { getSupabaseBrowser } from '../lib/supabaseClient'
 import {
   DEFAULT_DARK_REVIEW_ACCENT_HUE,
   reviewDarkAccentCssVars,
+  reviewLightAccentCssVars,
 } from '../review/reviewDarkAccent'
 
 type CommentsSectionProps = {
@@ -18,10 +19,7 @@ type CommentsSectionProps = {
 
 export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }: CommentsSectionProps) {
   const accentHue = darkAccentHue ?? DEFAULT_DARK_REVIEW_ACCENT_HUE
-  const theme = useMemo(
-    () => getReviewTheme(mode, mode === 'dark' ? { darkAccentHue: accentHue } : undefined),
-    [mode, accentHue],
-  )
+  const theme = useMemo(() => getReviewTheme(mode, { accentHue }), [mode, accentHue])
   const [comments, setComments] = useState<CommentRow[]>(initialComments)
   const [body, setBody] = useState('')
   const [authorName, setAuthorName] = useState('')
@@ -78,7 +76,7 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
         theme.fontBody,
         isDark ? 'grain-bg bg-[#120d0a]' : 'bg-[#f4f4f5]',
       )}
-      style={isDark ? reviewDarkAccentCssVars(accentHue) : undefined}
+      style={isDark ? reviewDarkAccentCssVars(accentHue) : reviewLightAccentCssVars(accentHue)}
     >
       <div className="mx-auto w-full max-w-6xl px-4 md:px-8">
         <div
@@ -86,7 +84,7 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
             'rounded-2xl border p-6 md:p-8',
             isDark
               ? 'border-stone-700/40 bg-[#141210] text-[#ebe6df]'
-              : 'border-zinc-200 bg-white text-zinc-900',
+              : 'border-[color:var(--review-accent-border)] bg-white text-zinc-900',
           )}
         >
         <h2 className={clsx(theme.fontDisplay, 'text-2xl font-semibold', isDark && 'text-[#f5f0ea]')}>
@@ -138,7 +136,7 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
             maxLength={80}
             placeholder="Anonymous"
             className={clsx(
-              'mt-2 w-full rounded-lg border px-3 py-2 text-sm outline-none ring-brand/30 focus:ring-2',
+              'mt-2 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[color:var(--review-accent)] focus:ring-opacity-40',
               isDark
                 ? 'border-stone-700/50 bg-[#141210] text-[#ebe6df] placeholder:text-stone-500'
                 : 'border-zinc-200 bg-white text-zinc-900 placeholder:text-zinc-400',
@@ -156,7 +154,7 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
             maxLength={4000}
             placeholder="Share your thoughts…"
             className={clsx(
-              'mt-2 w-full rounded-lg border px-3 py-2 text-sm outline-none ring-brand/30 focus:ring-2',
+              'mt-2 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[color:var(--review-accent)] focus:ring-opacity-40',
               isDark
                 ? 'border-stone-700/50 bg-[#141210] text-[#ebe6df] placeholder:text-stone-500'
                 : 'border-zinc-200 bg-white text-zinc-900 placeholder:text-zinc-400',
@@ -171,7 +169,7 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
                 'rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50',
                 isDark
                   ? 'bg-[color:var(--review-accent)] text-[#120d0a] hover:brightness-110'
-                  : 'bg-brand text-white hover:bg-brand-hover',
+                  : 'bg-[color:var(--review-accent)] text-white hover:brightness-95',
               )}
             >
               {busy ? 'Posting…' : 'Post comment'}

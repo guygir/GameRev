@@ -177,7 +177,10 @@ export function AddGamePage() {
 
   const [steamAppId, setSteamAppId] = useState<number | null>(null)
   const [steamReviewCount, setSteamReviewCount] = useState<number | null>(null)
+  /** 0–1 saved with the review; may differ from `steamSuggestedVisibility` after you tune the slider. */
   const [visibilityScore, setVisibilityScore] = useState<number | null>(null)
+  /** Set only after a fresh Steam fetch — server suggestion, not loaded from DB on edit. */
+  const [steamSuggestedVisibility, setSteamSuggestedVisibility] = useState<number | null>(null)
   const [steamResolvedName, setSteamResolvedName] = useState<string | null>(null)
   const [steamBusy, setSteamBusy] = useState(false)
   const [steamErr, setSteamErr] = useState<string | null>(null)
@@ -230,6 +233,7 @@ export function AddGamePage() {
     setSteamAppId(null)
     setSteamReviewCount(null)
     setVisibilityScore(null)
+    setSteamSuggestedVisibility(null)
     setSteamResolvedName(null)
     setSteamBusy(false)
     setSteamErr(null)
@@ -401,6 +405,7 @@ export function AddGamePage() {
       setIgdbMatches([])
       setIgdbErr(null)
       setSteamErr(null)
+      setSteamSuggestedVisibility(null)
       if (typeof row.steam_app_id === 'number' && row.steam_app_id > 0) {
         setSteamAppId(row.steam_app_id)
         setSteamReviewCount(
@@ -687,6 +692,7 @@ export function AddGamePage() {
     setSteamAppId(null)
     setSteamReviewCount(null)
     setVisibilityScore(null)
+    setSteamSuggestedVisibility(null)
     setSteamResolvedName(null)
     setSteamErr(null)
   }, [])
@@ -721,7 +727,9 @@ export function AddGamePage() {
       }
       setSteamAppId(json.appId)
       setSteamReviewCount(json.totalReviews)
-      setVisibilityScore(json.visibilityScore)
+      const suggested = json.visibilityScore
+      setSteamSuggestedVisibility(suggested)
+      setVisibilityScore(suggested)
       setSteamResolvedName(typeof json.steamName === 'string' ? json.steamName : null)
     } catch (e) {
       clearSteamSnapshot()
@@ -1395,8 +1403,9 @@ export function AddGamePage() {
           <div className="mt-6 rounded-xl border border-zinc-700/80 bg-zinc-950/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Steam footprint (optional)</p>
             <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-              Resolves the Steam store title from your game name (like IGDB search), snapshots review totals, and saves
-              them with the review. Nothing auto-refreshes after publish.
+              Resolves the Steam store title from your game name (like IGDB search), snapshots review totals, and
+              suggests a needle % from review volume + release year. That value is a starting point — tune it before
+              save. Nothing auto-refreshes after publish.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
@@ -1420,15 +1429,62 @@ export function AddGamePage() {
             </div>
             {steamErr ? <p className="mt-2 text-xs text-rose-300">{steamErr}</p> : null}
             {steamAppId != null && visibilityScore != null && steamReviewCount != null ? (
-              <p className="mt-3 text-xs text-zinc-400">
-                Matched <span className="font-medium text-zinc-200">{steamResolvedName ?? '—'}</span>
-                {' · '}
-                app <span className="font-mono text-zinc-300">{steamAppId}</span>
-                {' · '}
-                {steamReviewCount.toLocaleString()} reviews
-                {' · '}
-                needle <span className="font-mono text-zinc-300">{(visibilityScore * 100).toFixed(1)}%</span>
-              </p>
+              <div className="mt-4 space-y-3 text-xs text-zinc-400">
+                <p>
+                  Matched <span className="font-medium text-zinc-200">{steamResolvedName ?? '—'}</span>
+                  {' · '}
+                  app <span className="font-mono text-zinc-300">{steamAppId}</span>
+                  {' · '}
+                  {steamReviewCount.toLocaleString()} reviews
+                </p>
+                {steamSuggestedVisibility != null ? (
+                  <p className="leading-relaxed text-zinc-500">
+                    Suggested needle (Steam formula):{' '}
+                    <span className="font-mono text-zinc-300">{(steamSuggestedVisibility * 100).toFixed(1)}%</span>
+                    {' — '}
+                    adjust below if your editorial read of “buzz” differs.
+                  </p>
+                ) : (
+                  <p className="leading-relaxed text-zinc-500">
+                    Needle stored with this review (no fresh suggestion in this session). Adjust if you want a
+                    different snapshot.
+                  </p>
+                )}
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label htmlFor="steam-needle" className="font-medium text-zinc-300">
+                      Needle (0–100%)
+                    </label>
+                    <span className="font-mono text-sm text-emerald-200/90">
+                      {(visibilityScore * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <input
+                    id="steam-needle"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={Math.round((visibilityScore ?? 0) * 200) / 2}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n)) return
+                      setVisibilityScore(Math.min(1, Math.max(0, n / 100)))
+                    }}
+                    className="mt-2 h-2 w-full cursor-pointer accent-emerald-500"
+                  />
+                  {steamSuggestedVisibility != null &&
+                  Math.abs((visibilityScore ?? 0) - steamSuggestedVisibility) > 0.0005 ? (
+                    <button
+                      type="button"
+                      className="mt-2 text-xs font-semibold text-sky-400/90 underline-offset-2 hover:underline"
+                      onClick={() => setVisibilityScore(steamSuggestedVisibility)}
+                    >
+                      Reset to suggested {(steamSuggestedVisibility * 100).toFixed(1)}%
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
           </div>
         </section>

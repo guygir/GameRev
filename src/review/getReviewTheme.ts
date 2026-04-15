@@ -1,4 +1,8 @@
-import { darkRadarFromHue, DEFAULT_DARK_REVIEW_ACCENT_HUE } from './reviewDarkAccent'
+import {
+  darkRadarFromHue,
+  DEFAULT_DARK_REVIEW_ACCENT_HUE,
+  lightRadarFromHue,
+} from './reviewDarkAccent'
 
 export type ReviewMode = 'light' | 'dark'
 
@@ -10,7 +14,9 @@ export type ReviewRadarTheme = {
 }
 
 export type ReviewThemeOptions = {
-  /** 0–359; dark mode only — shifts the editorial “leading” accent while keeping the same structure. */
+  /** Resolved per-game hue (0–359): dark + light review shells, radar, pills, etc. */
+  accentHue?: number
+  /** @deprecated Prefer `accentHue` (same value). */
   darkAccentHue?: number
 }
 
@@ -107,6 +113,54 @@ const lightBase = (): Omit<
   },
 })
 
+/** Light review with per-game accent (parent sets `reviewLightAccentCssVars`). */
+const lightEditorial = (): Omit<
+  ReviewTheme,
+  'mode' | 'cover' | 'useGrain' | 'ambiance' | 'shell' | 'radar'
+> & { radar: ReviewRadarTheme } => ({
+  ...TYPOGRAPHY_CHOSEN,
+  navMuted: 'text-zinc-600',
+  eyebrow: 'text-xs font-semibold uppercase tracking-[0.35em] text-[color:var(--review-accent)]',
+  title:
+    'text-5xl font-semibold leading-[0.95] tracking-tight text-zinc-950 md:text-7xl',
+  subtitle: 'mt-5 max-w-xl text-base leading-relaxed text-zinc-600 md:text-lg',
+  coverFrame:
+    'relative aspect-[4/5] w-full max-w-sm rotate-2 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)] md:max-w-none',
+  coverBottomFade:
+    'pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-zinc-900/10 to-transparent',
+  sectionDivider:
+    'mt-14 flex flex-col gap-10 border-t border-zinc-200 pt-10',
+  h2: 'text-2xl font-semibold text-zinc-950',
+  hltbCard: 'rounded-md border border-zinc-200 bg-white p-3 shadow-sm',
+  hltbLabel: 'text-[0.65rem] font-semibold uppercase tracking-widest text-zinc-500',
+  hltbValue: 'mt-1 text-lg font-semibold text-zinc-900',
+  genrePill:
+    'rounded-full border border-[color:var(--review-accent-border)] bg-[color:var(--review-accent-surface)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--review-accent-bright)]',
+  tagPill:
+    'rounded-sm border border-[color:var(--review-accent-border)] bg-white px-3 py-1 text-xs font-medium text-zinc-700',
+  details: 'group rounded-md border border-[color:var(--review-accent-border)] bg-white p-4 shadow-sm open:bg-[color:var(--review-accent-surface)]',
+  summary:
+    'cursor-pointer font-[family-name:var(--font-anthropic-display)] text-2xl font-semibold tracking-tight text-zinc-950 outline-none transition group-open:text-[color:var(--review-accent)]',
+  prosHeading: 'text-xs font-semibold uppercase tracking-[0.2em] text-emerald-800',
+  consHeading: 'text-xs font-semibold uppercase tracking-[0.2em] text-rose-800',
+  prosBody: 'mt-2 space-y-2 text-sm leading-relaxed text-zinc-700',
+  consBody: 'mt-2 space-y-2 text-sm leading-relaxed text-zinc-700',
+  radarPanel:
+    'relative overflow-hidden rounded-md border border-[color:var(--review-accent-border)] bg-white p-2 shadow-sm md:p-3',
+  radarGlow:
+    'pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[color:var(--review-accent-glow)] blur-2xl',
+  radarTitle: 'text-3xl font-semibold text-zinc-950',
+  radarBody: 'mt-3 max-w-sm text-sm leading-relaxed text-zinc-600',
+  statRow: 'text-sm text-zinc-700',
+  statValue: 'font-semibold tabular-nums text-[color:var(--review-accent)]',
+  radar: {
+    fill: '#8251ee',
+    stroke: '#a37ef5',
+    grid: '#64748b',
+    label: '#475569',
+  },
+})
+
 /** Dark editorial tokens; accent hues come from CSS vars on the shell (`reviewDarkAccentCssVars`). */
 const darkEditorial = (): Omit<
   ReviewTheme,
@@ -149,9 +203,33 @@ const darkEditorial = (): Omit<
   statValue: 'font-semibold tabular-nums text-[color:var(--review-accent)]',
 })
 
-/** Pack 1 only: light (neutral + brand purple) or editorial dark. */
+function resolvedAccentHue(opts?: ReviewThemeOptions): number {
+  const raw = opts?.accentHue ?? opts?.darkAccentHue
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    let h = Math.round(raw) % 360
+    if (h < 0) h += 360
+    return h
+  }
+  return DEFAULT_DARK_REVIEW_ACCENT_HUE
+}
+
+/** Pack 1: light (catalog default = brand purple) or light review (per-game accent); editorial dark. */
 export function getReviewTheme(mode: ReviewMode, opts?: ReviewThemeOptions): ReviewTheme {
   if (mode === 'light') {
+    const hasAccent = opts?.accentHue != null || opts?.darkAccentHue != null
+    if (hasAccent) {
+      const hue = resolvedAccentHue(opts)
+      const t = lightEditorial()
+      return {
+        mode: 'light',
+        cover: 'light',
+        useGrain: false,
+        ambiance: 'none',
+        shell: 'relative min-h-[100dvh] overflow-hidden bg-[#f4f4f5] text-zinc-900',
+        ...t,
+        radar: lightRadarFromHue(hue),
+      }
+    }
     const t = lightBase()
     return {
       mode: 'light',
@@ -163,7 +241,7 @@ export function getReviewTheme(mode: ReviewMode, opts?: ReviewThemeOptions): Rev
     }
   }
 
-  const hue = opts?.darkAccentHue ?? DEFAULT_DARK_REVIEW_ACCENT_HUE
+  const hue = resolvedAccentHue(opts)
   const t = darkEditorial()
   return {
     mode: 'dark',
