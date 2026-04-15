@@ -84,8 +84,15 @@ export function StatRadar({
 
   const cx = size / 2
   const cy = size / 2
-  const r = size * 0.36
+  /**
+   * Filling a narrow production column: smaller polygon + generous viewBox padding so
+   * long axis names (Architecture, Presentation) stay inside the SVG (not clipped by overflow).
+   */
+  const r = size * (fillContainer ? 0.26 : 0.36)
   const n = statAxes.length
+  const labelRadius = r + (fillContainer ? 11 : 18)
+  const layoutPad = fillContainer ? 54 : 0
+  const vbSize = size + 2 * layoutPad
 
   const pointFor = (value: number, i: number) => {
     const angle = (Math.PI * 2 * i) / n - Math.PI / 2
@@ -127,7 +134,11 @@ export function StatRadar({
       <svg
         width={fillContainer ? '100%' : size}
         height={fillContainer ? '100%' : size}
-        viewBox={`0 0 ${size} ${size}`}
+        viewBox={
+          fillContainer
+            ? `${-layoutPad} ${-layoutPad} ${vbSize} ${vbSize}`
+            : `0 0 ${size} ${size}`
+        }
         preserveAspectRatio="xMidYMid meet"
         className={
           fillContainer ? 'absolute inset-0 h-full max-h-full w-full max-w-full' : undefined
@@ -209,9 +220,8 @@ export function StatRadar({
         })}
         {statAxes.map((axis, i) => {
           const angle = (Math.PI * 2 * i) / n - Math.PI / 2
-          const lr = r + 18
-          const lx = cx + lr * Math.cos(angle)
-          const ly = cy + lr * Math.sin(angle)
+          const lx = cx + labelRadius * Math.cos(angle)
+          const ly = cy + labelRadius * Math.sin(angle)
           return (
             <circle
               key={`hit-label-${axis}`}
@@ -229,9 +239,8 @@ export function StatRadar({
         })}
         {statAxes.map((axis, i) => {
           const angle = (Math.PI * 2 * i) / n - Math.PI / 2
-          const lr = r + 18
-          const lx = cx + lr * Math.cos(angle)
-          const ly = cy + lr * Math.sin(angle)
+          const lx = cx + labelRadius * Math.cos(angle)
+          const ly = cy + labelRadius * Math.sin(angle)
           const anchor =
             Math.abs(Math.cos(angle)) < 0.2
               ? 'middle'
@@ -252,7 +261,7 @@ export function StatRadar({
               textAnchor={anchor as 'start' | 'middle' | 'end'}
               dominantBaseline={baseline as 'auto' | 'middle' | 'hanging'}
               fill={labelColor}
-              fontSize={10}
+              fontSize={fillContainer ? 8.75 : 10}
               fontWeight={600}
               style={{ fontFamily: 'inherit', pointerEvents: 'none' }}
             >

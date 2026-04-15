@@ -2,13 +2,16 @@ import clsx from 'clsx'
 import { useId } from 'react'
 import type { ReviewMode } from '../review/getReviewTheme'
 
-/** Horizontal semi-axis (span unknown → mainstream). */
-const RX = 234
-/** Vertical semi-axis: shallow arc (~½ the prior circular bulge). */
-const RY = 82
+/**
+ * Horizontal semi-axis: arc endpoints at x = 100 and 500 match the centers of three equal
+ * label columns (0–200, 200–400, 400–600) so “unknown” / “mainstream” sit under the arc ends.
+ */
+const RX = 200
+/** Vertical semi-axis: shallow arc. */
+const RY = 78
 const CX = 300
 /** Chord (flat base of the semicircle). */
-const CY = 168
+const CY = 170
 const ARC_D = `M ${CX - RX} ${CY} A ${RX} ${RY} 0 1 1 ${CX + RX} ${CY}`
 
 /** Ramanujan ellipse perimeter; upper arc ≈ half. */
@@ -22,8 +25,9 @@ function semiEllipseArcLength(rx: number, ry: number): number {
 
 const ARC_LEN = semiEllipseArcLength(RX, RY)
 const STROKE = 18
-const PCT_BASELINE_Y = CY
-const FONT_SIZE_VB = 48
+/** Lift % into the bowl so production / tight viewBoxes don’t clip the bottom of the figures. */
+const PCT_BASELINE_Y = CY - 14
+const FONT_SIZE_VB = 44
 
 function arcGradientStops(hue: number, mode: ReviewMode): { a: string; b: string; c: string; track: string } {
   if (mode === 'dark') {
@@ -71,8 +75,8 @@ export function PopularityGauge({
   return (
     <section className="w-full" aria-label={`Steam store popularity snapshot, ${pct}`}>
       <div className="mx-auto w-full max-w-[min(100%,36rem)]">
-        {/* Tight viewBox: crop dead space; min-y clears stroke above arc peak (~y 77). */}
-        <svg viewBox="0 72 600 108" className="block h-auto w-full" aria-hidden>
+        {/* Room above arc peak and below % baseline (production was clipping the %). */}
+        <svg viewBox="0 52 600 140" className="block h-auto w-full" aria-hidden>
           <defs>
             <linearGradient id={`${gid}-arc`} x1="0%" y1="50%" x2="100%" y2="50%">
               <stop offset="0%" stopColor={stops.a} />
@@ -123,15 +127,15 @@ export function PopularityGauge({
 
       <div
         className={clsx(
-          'mt-0.5 grid grid-cols-3 items-center gap-1.5 px-1 leading-tight sm:gap-3 sm:px-2',
+          'mt-1.5 grid w-full grid-cols-3 items-start gap-2 px-0 leading-snug sm:gap-3',
           fontBodyClass,
-          'text-[0.58rem] font-semibold uppercase tracking-[0.18em]',
+          'text-xs font-semibold uppercase tracking-[0.12em] sm:text-[0.8125rem] sm:tracking-[0.14em]',
           labelTone,
         )}
       >
-        <span className="justify-self-start text-left">unknown</span>
-        <span className="justify-self-center text-center">niche</span>
-        <span className="justify-self-end text-right">mainstream</span>
+        <span className="w-full text-center">unknown</span>
+        <span className="w-full text-center">niche</span>
+        <span className="w-full text-center">mainstream</span>
       </div>
     </section>
   )
