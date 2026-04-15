@@ -13,7 +13,7 @@ type StatRadarProps = {
   /** Coordinate space for geometry (viewBox); display size follows unless `fillContainer`. */
   size?: number
   label?: string
-  /** Stretch SVG to fill parent; parent should set height/width (e.g. aspect-square + w-full). */
+  /** Stretch SVG to fill parent; pair with `aspect-square w-full` so `meet` uses full column width. */
   fillContainer?: boolean
   className?: string
 }
@@ -38,6 +38,95 @@ function wedgePoints(
 
 function axisTipText(axis: GameStatAxis, stats: GameStats) {
   return `${axis} (${stats[axis]}): ${statAxisTooltips[axis]}`
+}
+
+const RADAR_LABEL_FS = 10
+/** Approximate horizontal advance per em for axis labels (bold ~600, sans). */
+const RADAR_LABEL_CHAR_EM = 0.53
+const RADAR_LABEL_LINE = RADAR_LABEL_FS * 1.2
+/** Ring / fill stroke + vertex dots (~3px) outside nominal `r`. */
+const RADAR_GEOM_SLOP = 4
+
+/**
+ * Smallest symmetric pad so chart + labels fit in `[−pad, size+pad]²` (then `meet` fills the square with no clip loss).
+ */
+function fillContainerSquarePad(
+  size: number,
+  cx: number,
+  cy: number,
+  r: number,
+  labelRadius: number,
+  n: number,
+): number {
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+
+  const grow = (x1: number, y1: number, x2: number, y2: number) => {
+    minX = Math.min(minX, x1, x2)
+    maxX = Math.max(maxX, x1, x2)
+    minY = Math.min(minY, y1, y2)
+    maxY = Math.max(maxY, y1, y2)
+  }
+
+  // Outer ring + spokes + stroke at full r
+  for (let i = 0; i < n; i++) {
+    const angle = (Math.PI * 2 * i) / n - Math.PI / 2
+    const x = cx + r * Math.cos(angle)
+    const y = cy + r * Math.sin(angle)
+    grow(x, y, x, y)
+  }
+  grow(cx - r - RADAR_GEOM_SLOP, cy - r - RADAR_GEOM_SLOP, cx + r + RADAR_GEOM_SLOP, cy + r + RADAR_GEOM_SLOP)
+
+  for (let i = 0; i < statAxes.length; i++) {
+    const axis = statAxes[i]
+    const angle = (Math.PI * 2 * i) / n - Math.PI / 2
+    const lx = cx + labelRadius * Math.cos(angle)
+    const ly = cy + labelRadius * Math.sin(angle)
+    const textW = axis.length * RADAR_LABEL_FS * RADAR_LABEL_CHAR_EM
+
+    const anchor: 'start' | 'middle' | 'end' =
+      Math.abs(Math.cos(angle)) < 0.2
+        ? 'middle'
+        : Math.cos(angle) > 0
+          ? 'start'
+          : 'end'
+    const baseline: 'auto' | 'middle' | 'hanging' =
+      Math.abs(Math.sin(angle)) < 0.2
+        ? 'middle'
+        : Math.sin(angle) > 0
+          ? 'hanging'
+          : 'auto'
+
+    let left = lx
+    let right = lx
+    if (anchor === 'start') {
+      right = lx + textW
+    } else if (anchor === 'end') {
+      left = lx - textW
+    } else {
+      left = lx - textW / 2
+      right = lx + textW / 2
+    }
+
+    let top = ly
+    let bottom = ly
+    if (baseline === 'hanging') {
+      bottom = ly + RADAR_LABEL_LINE
+    } else if (baseline === 'middle') {
+      top = ly - RADAR_LABEL_LINE / 2
+      bottom = ly + RADAR_LABEL_LINE / 2
+    } else {
+      top = ly - RADAR_LABEL_LINE * 0.72
+      bottom = ly + RADAR_LABEL_LINE * 0.28
+    }
+    grow(left, top, right, bottom)
+  }
+
+  const need =
+    Math.max(0, -minX, maxX - size, -minY, maxY - size) + 1.5 // subpixel / AA slack
+  return Math.ceil(need * 100) / 100
 }
 
 export function StatRadar({
@@ -84,14 +173,10 @@ export function StatRadar({
 
   const cx = size / 2
   const cy = size / 2
-  /**
-   * Filling a narrow production column: smaller polygon + generous viewBox padding so
-   * long axis names (Architecture, Presentation) stay inside the SVG (not clipped by overflow).
-   */
-  const r = size * (fillContainer ? 0.26 : 0.36)
+  const r = size * 0.36
   const n = statAxes.length
-  const labelRadius = r + (fillContainer ? 11 : 18)
-  const layoutPad = fillContainer ? 54 : 0
+  const labelRadius = r + 18
+  const layoutPad = fillContainer ? fillContainerSquarePad(size, cx, cy, r, labelRadius, n) : 0
   const vbSize = size + 2 * layoutPad
 
   const pointFor = (value: number, i: number) => {
@@ -113,7 +198,7 @@ export function StatRadar({
     <figure
       className={clsx(
         fillContainer
-          ? 'relative m-0 flex h-full min-h-0 w-full min-w-0 flex-1 flex-col'
+          ? 'absolute inset-0 m-0 min-h-0 w-full min-w-0 overflow-hidden'
           : 'relative inline-flex flex-col items-center gap-2',
         className,
       )}
@@ -141,7 +226,9 @@ export function StatRadar({
         }
         preserveAspectRatio="xMidYMid meet"
         className={
-          fillContainer ? 'absolute inset-0 h-full max-h-full w-full max-w-full' : undefined
+          fillContainer
+            ? 'absolute inset-0 h-full max-h-full w-full max-w-full overflow-hidden'
+            : undefined
         }
         role="img"
         aria-label={label}
@@ -261,7 +348,7 @@ export function StatRadar({
               textAnchor={anchor as 'start' | 'middle' | 'end'}
               dominantBaseline={baseline as 'auto' | 'middle' | 'hanging'}
               fill={labelColor}
-              fontSize={fillContainer ? 8.75 : 10}
+              fontSize={RADAR_LABEL_FS}
               fontWeight={600}
               style={{ fontFamily: 'inherit', pointerEvents: 'none' }}
             >

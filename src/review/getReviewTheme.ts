@@ -98,7 +98,7 @@ const lightBase = (): Omit<
   prosBody: 'mt-2 space-y-2 text-sm leading-relaxed text-zinc-700',
   consBody: 'mt-2 space-y-2 text-sm leading-relaxed text-zinc-700',
   radarPanel:
-    'relative overflow-hidden rounded-md border border-zinc-200 bg-white p-2 shadow-sm md:p-3',
+    'relative overflow-visible rounded-md border border-zinc-200 bg-white p-2 shadow-sm md:p-3',
   radarGlow:
     'pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-brand/15 blur-2xl',
   radarTitle: 'text-3xl font-semibold text-zinc-950',

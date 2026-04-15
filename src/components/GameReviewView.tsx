@@ -332,12 +332,11 @@ export function GameReviewView({
                   />
                 </div>
               ) : null}
-              <div className={clsx(theme.radarPanel, 'flex min-h-[min(40dvh,460px)] flex-col')}>
+              <div className={theme.radarPanel}>
                 <div className={theme.radarGlow} />
-                <div className="relative flex min-h-0 min-w-0 flex-1 flex-col p-0">
+                <div className="relative aspect-square w-full shrink-0 overflow-hidden rounded-md">
                   <StatRadar
                     fillContainer
-                    size={264}
                     stats={vm.stats}
                     fill={theme.radar.fill}
                     stroke={theme.radar.stroke}

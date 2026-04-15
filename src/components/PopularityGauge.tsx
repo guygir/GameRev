@@ -27,7 +27,7 @@ const ARC_LEN = semiEllipseArcLength(RX, RY)
 const STROKE = 18
 /** Lift % into the bowl so production / tight viewBoxes don’t clip the bottom of the figures. */
 const PCT_BASELINE_Y = CY - 14
-const FONT_SIZE_VB = 44
+const FONT_SIZE_VB = 36
 
 function arcGradientStops(hue: number, mode: ReviewMode): { a: string; b: string; c: string; track: string } {
   if (mode === 'dark') {
@@ -129,7 +129,7 @@ export function PopularityGauge({
         className={clsx(
           'mt-1.5 grid w-full grid-cols-3 items-start gap-2 px-0 leading-snug sm:gap-3',
           fontBodyClass,
-          'text-xs font-semibold uppercase tracking-[0.12em] sm:text-[0.8125rem] sm:tracking-[0.14em]',
+          'text-[0.8125rem] font-semibold uppercase tracking-[0.11em] sm:text-sm sm:tracking-[0.13em]',
           labelTone,
         )}
       >
