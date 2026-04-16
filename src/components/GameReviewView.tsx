@@ -212,7 +212,7 @@ export function GameReviewView({
               ) : null}
             </div>
             <div
-              className="motion-rise md:col-span-6 md:-translate-y-6 md:justify-self-end"
+              className="motion-rise w-full min-w-0 px-[20%] md:col-span-6 md:-translate-y-6 md:justify-self-end"
               style={{ ['--motion-rise-delay' as string]: '260ms' }}
             >
               <div className={theme.coverFrame}>
