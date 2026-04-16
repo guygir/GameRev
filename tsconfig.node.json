@@ -28,6 +28,7 @@
     "src/review/gameStats.ts",
     "src/lib/formatReviewPublished.ts",
     "src/lib/parseReleaseYearFromLabel.ts",
-    "src/types/game.ts"
+    "src/types/game.ts",
+    "src/lib/geminiBackloggdModels.ts"
   ]
 }

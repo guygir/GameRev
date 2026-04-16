@@ -246,7 +246,7 @@ export type BackloggdSuggestionsResult = {
 
 export async function fetchBackloggdSuggestions(
   rawQuery: string,
-  options: { useLlm?: boolean; env?: ServerProcessEnv } = {},
+  options: { useLlm?: boolean; env?: ServerProcessEnv; geminiModel?: string } = {},
 ): Promise<{ ok: true; data: BackloggdSuggestionsResult } | { ok: false; error: string }> {
   const query = rawQuery.trim()
   if (query.length < 2) return { ok: false, error: 'Query too short (need at least 2 characters).' }
@@ -301,11 +301,15 @@ export async function fetchBackloggdSuggestions(
   let llmError: string | undefined
 
   if (options.useLlm && options.env) {
-    const refined = await refineBackloggdWithLlm(options.env, {
-      gameTitle: hit.title,
-      genres: suggestedTags.slice(0, 12),
-      reviewSnippets: reviewBodies.slice(0, 8),
-    })
+    const refined = await refineBackloggdWithLlm(
+      options.env,
+      {
+        gameTitle: hit.title,
+        genres: suggestedTags.slice(0, 12),
+        reviewSnippets: reviewBodies.slice(0, 8),
+      },
+      { geminiModel: options.geminiModel },
+    )
     if (refined.ok) {
       suggestedTags = mergeTagsPreferFirst(refined.data.suggestedTags, suggestedTags, 16)
       suggestedPlayIfLiked = refined.data.suggestedPlayIfLiked

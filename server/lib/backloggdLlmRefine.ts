@@ -1,3 +1,7 @@
+import {
+  BACKLOGGD_GEMINI_TRY_MODELS,
+  isAllowedBackloggdGeminiModel,
+} from '../../src/lib/geminiBackloggdModels.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 /**
@@ -19,23 +23,53 @@ export type LlmRefineOutput = {
 }
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+/** Retry same model / rotate models on overload or gateway errors (Google often returns 503 under load). */
+const GEMINI_TRANSIENT_HTTP = new Set([429, 502, 503])
+
+function shortenGeminiErrorBody(raw: string): string {
+  const slice = raw.slice(0, 400).trim()
+  try {
+    const j = JSON.parse(slice) as { error?: { message?: string; code?: number | string } }
+    const m = j.error?.message
+    if (typeof m === 'string' && m.trim()) {
+      const c = j.error?.code
+      return c != null && c !== '' ? `${m} (${c})` : m
+    }
+  } catch {
+    /* ignore */
+  }
+  return slice
+}
+
 /**
- * Flash / Flash-Lite are the usual Gemini Developer API free-tier models (strict RPM/TPM/RPD).
- * Order: smallest first. Override with GEMINI_MODEL; others are tried on 404/429.
+ * Order: try newer first; older 1.5 Flash last when 2.x is overloaded.
+ * UI may pick a whitelisted free-tier model first; otherwise `GEMINI_MODEL` prepends the default list.
  * @see https://ai.google.dev/pricing
  * @see https://ai.google.dev/gemini-api/docs/rate-limits
  */
-const GEMINI_TRY_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'] as const
-
-function geminiModelsToTry(env: ServerProcessEnv): string[] {
-  const primary = (env.GEMINI_MODEL ?? '').trim()
-  const ordered = primary ? [primary, ...GEMINI_TRY_MODELS] : [...GEMINI_TRY_MODELS]
+function dedupeModelOrder(models: string[]): string[] {
   const seen = new Set<string>()
-  return ordered.filter((m) => {
+  return models.filter((m) => {
     if (seen.has(m)) return false
     seen.add(m)
     return true
   })
+}
+
+function geminiModelsToTry(env: ServerProcessEnv, uiPreferred?: string | null): string[] {
+  const tryList = [...BACKLOGGD_GEMINI_TRY_MODELS] as string[]
+  const preferred = (uiPreferred ?? '').trim()
+  if (preferred && isAllowedBackloggdGeminiModel(preferred)) {
+    return dedupeModelOrder([preferred, ...tryList.filter((m) => m !== preferred)])
+  }
+  const primary = (env.GEMINI_MODEL ?? '').trim()
+  const ordered = primary ? [primary, ...tryList] : [...tryList]
+  return dedupeModelOrder(ordered)
 }
 
 function buildPrompt(input: LlmRefineInput): string {
@@ -137,39 +171,49 @@ async function refineGemini(
   input: LlmRefineInput,
 ): Promise<LlmRefineOutput | null> {
   let lastErrorBody = ''
+  const maxAttemptsPerModel = 3
+
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
-    const ac = new AbortController()
-    const t = setTimeout(() => ac.abort(), 45_000)
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        signal: ac.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: buildPrompt(input) }] }],
-          generationConfig: {
-            temperature: 0.35,
-            maxOutputTokens: 2048,
-            responseMimeType: 'application/json',
-          },
-        }),
-      })
-      const rawText = await res.text()
-      if (!res.ok) {
-        lastErrorBody = rawText.slice(0, 280)
-        if (res.status === 404 || res.status === 429) continue
-        throw new Error(`Gemini: ${lastErrorBody}`)
+
+    attempts: for (let attempt = 0; attempt < maxAttemptsPerModel; attempt++) {
+      const ac = new AbortController()
+      const t = setTimeout(() => ac.abort(), 45_000)
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          signal: ac.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: buildPrompt(input) }] }],
+            generationConfig: {
+              temperature: 0.35,
+              maxOutputTokens: 2048,
+              responseMimeType: 'application/json',
+            },
+          }),
+        })
+        const rawText = await res.text()
+        if (!res.ok) {
+          lastErrorBody = shortenGeminiErrorBody(rawText)
+          if (res.status === 404) break attempts
+          if (GEMINI_TRANSIENT_HTTP.has(res.status) && attempt < maxAttemptsPerModel - 1) {
+            await sleep(700 * 2 ** attempt + Math.floor(Math.random() * 250))
+            continue attempts
+          }
+          if (GEMINI_TRANSIENT_HTTP.has(res.status)) break attempts
+          throw new Error(`Gemini: ${lastErrorBody}`)
+        }
+        const json = JSON.parse(rawText) as {
+          candidates?: { content?: { parts?: { text?: string }[] } }[]
+        }
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text
+        if (!text) break attempts
+        const parsed = parseJsonObject(text)
+        if (parsed) return parsed
+      } finally {
+        clearTimeout(t)
       }
-      const json = JSON.parse(rawText) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[]
-      }
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text
-      if (!text) continue
-      const parsed = parseJsonObject(text)
-      if (parsed) return parsed
-    } finally {
-      clearTimeout(t)
     }
   }
   throw new Error(
@@ -191,6 +235,7 @@ function nonempty(out: LlmRefineOutput): boolean {
 export async function refineBackloggdWithLlm(
   env: ServerProcessEnv,
   input: LlmRefineInput,
+  opts?: { geminiModel?: string | null },
 ): Promise<{ ok: true; data: LlmRefineOutput } | { ok: false; error: string }> {
   const openai = (env.OPENAI_API_KEY ?? '').trim()
   const gemini = (env.GEMINI_API_KEY ?? '').trim()
@@ -212,7 +257,7 @@ export async function refineBackloggdWithLlm(
 
   if (gemini) {
     try {
-      const out = await refineGemini(gemini, geminiModelsToTry(env), input)
+      const out = await refineGemini(gemini, geminiModelsToTry(env, opts?.geminiModel ?? null), input)
       if (out && nonempty(out)) return { ok: true, data: out }
       return { ok: false, error: 'Gemini returned no usable JSON.' }
     } catch (e) {

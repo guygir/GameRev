@@ -11,6 +11,7 @@ import {
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference } from '../lib/reviewModePreference'
 import { parseReleaseYearFromLabel } from '../lib/parseReleaseYearFromLabel'
+import { BACKLOGGD_GEMINI_MODEL_SELECT_OPTIONS } from '../lib/geminiBackloggdModels'
 import type { CommentRow } from '../types/game'
 
 type HltbHit = {
@@ -166,6 +167,8 @@ export function AddGamePage() {
   const [backloggdErr, setBackloggdErr] = useState<string | null>(null)
   const [backloggdData, setBackloggdData] = useState<BackloggdSuggestPayload | null>(null)
   const [backloggdUseLlm, setBackloggdUseLlm] = useState(false)
+  /** When Cloud AI uses Gemini (after OpenAI if configured), try this model first — free-tier Flash only. */
+  const [backloggdGeminiModel, setBackloggdGeminiModel] = useState('')
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [tagDraft, setTagDraft] = useState('')
 
@@ -614,7 +617,11 @@ export function AddGamePage() {
       const res = await fetch('/api/backloggd-suggestions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q, useLlm: backloggdUseLlm }),
+        body: JSON.stringify({
+          query: q,
+          useLlm: backloggdUseLlm,
+          ...(backloggdUseLlm && backloggdGeminiModel ? { geminiModel: backloggdGeminiModel } : {}),
+        }),
       })
       const json = (await res.json()) as BackloggdSuggestPayload & { error?: string }
       if (!res.ok) throw new Error(json.error ?? 'Backloggd request failed')
@@ -625,7 +632,7 @@ export function AddGamePage() {
     } finally {
       setBackloggdBusy(false)
     }
-  }, [name, backloggdUseLlm])
+  }, [name, backloggdUseLlm, backloggdGeminiModel])
 
   const addSuggestedTag = useCallback((tag: string) => {
     const t = tag.trim()
@@ -1115,6 +1122,35 @@ export function AddGamePage() {
                 .
               </span>
             </label>
+            {backloggdUseLlm ? (
+              <label className="mt-3 block text-xs text-zinc-400">
+                <span className="font-medium text-zinc-300">Gemini model (if the server uses Gemini)</span>
+                <select
+                  value={backloggdGeminiModel}
+                  onChange={(e) => setBackloggdGeminiModel(e.target.value)}
+                  className="mt-1 block w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none ring-emerald-500/30 focus:ring-2"
+                >
+                  {BACKLOGGD_GEMINI_MODEL_SELECT_OPTIONS.map((o) => (
+                    <option key={o.value || 'auto'} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] leading-relaxed text-zinc-500">
+                  Only free-tier Flash / Flash-Lite IDs are listed. If the server has OpenAI configured, it is tried
+                  first; this order applies when the request falls through to Gemini. See{' '}
+                  <a
+                    className="text-amber-300/90 underline-offset-2 hover:underline"
+                    href="https://ai.google.dev/pricing"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    pricing
+                  </a>
+                  .
+                </span>
+              </label>
+            ) : null}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"

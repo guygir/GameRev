@@ -152,10 +152,12 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
     }
 
     if (method === 'POST' && route === 'backloggd-suggestions') {
-      const body = (jsonBody ?? {}) as { query?: unknown; useLlm?: unknown }
+      const body = (jsonBody ?? {}) as { query?: unknown; useLlm?: unknown; geminiModel?: unknown }
       const q = typeof body.query === 'string' ? body.query : ''
       const useLlm = body.useLlm === true
-      const out = await fetchBackloggdSuggestions(q, { useLlm, env })
+      const geminiModel =
+        typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
+      const out = await fetchBackloggdSuggestions(q, { useLlm, env, geminiModel })
       if (out.ok === false) return { status: 422, body: { error: out.error } }
       return { status: 200, body: out.data }
     }
