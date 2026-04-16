@@ -9,6 +9,7 @@ import { sampleCoverAccentFromUrl } from './sampleCoverAccentFromUrl.js'
 import { syncReaderCommentToGithub } from './githubGameComments.js'
 import { deleteReaderCommentFromBody } from './deleteReaderComment.js'
 import { fetchSteamVisibility } from './steamPopularity.js'
+import { generateReviewCapsuleSummary } from './reviewSummaryLlm.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 const hltb = new HowLongToBeatService()
@@ -160,6 +161,23 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       const out = await fetchBackloggdSuggestions(q, { useLlm, env, geminiModel })
       if (out.ok === false) return { status: 422, body: { error: out.error } }
       return { status: 200, body: out.data }
+    }
+
+    if (method === 'POST' && route === 'review-summary-suggest') {
+      const body = (jsonBody ?? {}) as {
+        gameName?: unknown
+        pros?: unknown
+        cons?: unknown
+        geminiModel?: unknown
+      }
+      const gameName = typeof body.gameName === 'string' ? body.gameName : ''
+      const pros = typeof body.pros === 'string' ? body.pros : ''
+      const cons = typeof body.cons === 'string' ? body.cons : ''
+      const geminiModel =
+        typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
+      const out = await generateReviewCapsuleSummary(env, { gameName, pros, cons }, { geminiModel })
+      if (out.ok === false) return { status: 422, body: { error: out.error } }
+      return { status: 200, body: { summary: out.summary } }
     }
 
     if (method === 'POST' && route === 'sample-cover-accent') {

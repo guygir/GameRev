@@ -61,7 +61,8 @@ function dedupeModelOrder(models: string[]): string[] {
   })
 }
 
-function geminiModelsToTry(env: ServerProcessEnv, uiPreferred?: string | null): string[] {
+/** Shared with other editor LLM routes (e.g. review capsule summary). */
+export function geminiModelsToTry(env: ServerProcessEnv, uiPreferred?: string | null): string[] {
   const tryList = [...BACKLOGGD_GEMINI_TRY_MODELS] as string[]
   const preferred = (uiPreferred ?? '').trim()
   if (preferred && isAllowedBackloggdGeminiModel(preferred)) {

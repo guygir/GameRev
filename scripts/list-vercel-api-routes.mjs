@@ -48,6 +48,7 @@ const logical = [
   'POST /api/add-game',
   'POST /api/update-game',
   'POST /api/backloggd-suggestions',
+  'POST /api/review-summary-suggest',
   'POST /api/sample-cover-accent',
   'GET  /api/steam-visibility',
   'POST /api/notify-comment',

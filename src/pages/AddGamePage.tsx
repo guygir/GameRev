@@ -168,7 +168,9 @@ export function AddGamePage() {
   const [backloggdData, setBackloggdData] = useState<BackloggdSuggestPayload | null>(null)
   const [backloggdUseLlm, setBackloggdUseLlm] = useState(false)
   /** When Cloud AI uses Gemini (after OpenAI if configured), try this model first — free-tier Flash only. */
-  const [backloggdGeminiModel, setBackloggdGeminiModel] = useState('')
+  const [cloudLlmGeminiModel, setCloudLlmGeminiModel] = useState('')
+  const [summarySuggestBusy, setSummarySuggestBusy] = useState(false)
+  const [summarySuggestErr, setSummarySuggestErr] = useState<string | null>(null)
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [tagDraft, setTagDraft] = useState('')
 
@@ -620,7 +622,7 @@ export function AddGamePage() {
         body: JSON.stringify({
           query: q,
           useLlm: backloggdUseLlm,
-          ...(backloggdUseLlm && backloggdGeminiModel ? { geminiModel: backloggdGeminiModel } : {}),
+          ...(backloggdUseLlm && cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
         }),
       })
       const json = (await res.json()) as BackloggdSuggestPayload & { error?: string }
@@ -632,7 +634,44 @@ export function AddGamePage() {
     } finally {
       setBackloggdBusy(false)
     }
-  }, [name, backloggdUseLlm, backloggdGeminiModel])
+  }, [name, backloggdUseLlm, cloudLlmGeminiModel])
+
+  const runReviewSummarySuggest = useCallback(async () => {
+    const gameName = name.trim()
+    if (gameName.length < 2) {
+      setSummarySuggestErr('Set the game name first (at least 2 characters).')
+      return
+    }
+    const pros = prosText.trim()
+    const cons = consText.trim()
+    if (!pros && !cons) {
+      setSummarySuggestErr('Add some Pros or Cons text first.')
+      return
+    }
+    setSummarySuggestBusy(true)
+    setSummarySuggestErr(null)
+    try {
+      const res = await fetch('/api/review-summary-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameName,
+          pros,
+          cons,
+          ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+        }),
+      })
+      const json = (await res.json()) as { summary?: string; error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'Summary suggestion failed')
+      const s = typeof json.summary === 'string' ? json.summary.trim() : ''
+      if (!s) throw new Error('Empty summary from server')
+      setSummaryText(s)
+    } catch (e) {
+      setSummarySuggestErr(e instanceof Error ? e.message : 'Summary suggestion failed')
+    } finally {
+      setSummarySuggestBusy(false)
+    }
+  }, [name, prosText, consText, cloudLlmGeminiModel])
 
   const addSuggestedTag = useCallback((tag: string) => {
     const t = tag.trim()
@@ -1122,35 +1161,35 @@ export function AddGamePage() {
                 .
               </span>
             </label>
-            {backloggdUseLlm ? (
-              <label className="mt-3 block text-xs text-zinc-400">
-                <span className="font-medium text-zinc-300">Gemini model (if the server uses Gemini)</span>
-                <select
-                  value={backloggdGeminiModel}
-                  onChange={(e) => setBackloggdGeminiModel(e.target.value)}
-                  className="mt-1 block w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none ring-emerald-500/30 focus:ring-2"
+            <label className="mt-3 block text-xs text-zinc-400">
+              <span className="font-medium text-zinc-300">
+                Preferred Gemini model (Backloggd Cloud AI & summary paragraph below)
+              </span>
+              <select
+                value={cloudLlmGeminiModel}
+                onChange={(e) => setCloudLlmGeminiModel(e.target.value)}
+                className="mt-1 block w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none ring-emerald-500/30 focus:ring-2"
+              >
+                {BACKLOGGD_GEMINI_MODEL_SELECT_OPTIONS.map((o) => (
+                  <option key={o.value || 'auto'} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] leading-relaxed text-zinc-500">
+                Only free-tier Flash / Flash-Lite IDs. OpenAI is tried first when configured; this order applies when the
+                request uses Gemini. See{' '}
+                <a
+                  className="text-amber-300/90 underline-offset-2 hover:underline"
+                  href="https://ai.google.dev/pricing"
+                  target="_blank"
+                  rel="noreferrer"
                 >
-                  {BACKLOGGD_GEMINI_MODEL_SELECT_OPTIONS.map((o) => (
-                    <option key={o.value || 'auto'} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <span className="mt-1 block text-[11px] leading-relaxed text-zinc-500">
-                  Only free-tier Flash / Flash-Lite IDs are listed. If the server has OpenAI configured, it is tried
-                  first; this order applies when the request falls through to Gemini. See{' '}
-                  <a
-                    className="text-amber-300/90 underline-offset-2 hover:underline"
-                    href="https://ai.google.dev/pricing"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    pricing
-                  </a>
-                  .
-                </span>
-              </label>
-            ) : null}
+                  pricing
+                </a>
+                .
+              </span>
+            </label>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -1816,6 +1855,21 @@ export function AddGamePage() {
             Optional capsule for the public review page (Summary fold). Plain text; long-form is fine (up to about 12k
             characters).
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={summarySuggestBusy}
+              onClick={() => void runReviewSummarySuggest()}
+              className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition hover:border-amber-500/50 hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {summarySuggestBusy ? 'Generating…' : 'Suggest paragraph (Cloud AI)'}
+            </button>
+            <span className="text-[11px] text-zinc-500">
+              Uses game name + Pros + Cons; same OpenAI / Gemini keys as Backloggd Cloud AI. Replaces this box on
+              success. Optional Gemini order: <strong className="text-zinc-400">Backloggd</strong> card above.
+            </span>
+          </div>
+          {summarySuggestErr ? <p className="text-xs text-rose-300">{summarySuggestErr}</p> : null}
           <textarea
             value={summaryText}
             onChange={(e) => setSummaryText(e.target.value)}
