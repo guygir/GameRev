@@ -43,6 +43,12 @@ function linesToList(text: string): string[] {
     .filter(Boolean)
 }
 
+/** Split for multiline editors: keeps blank lines so Enter / new paragraphs work while typing. */
+function splitLinesKeepEmpty(text: string): string[] {
+  if (!text) return []
+  return text.split(/\r?\n/).map((l) => l.trim())
+}
+
 function isGameStats(raw: unknown): raw is GameStats {
   if (!raw || typeof raw !== 'object') return false
   const o = raw as Record<string, number>
@@ -844,7 +850,7 @@ export function AddGamePage() {
         subtitle: subtitle.trim(),
         releaseLabel: releaseLabel.trim() || null,
         coverImageUrl,
-        platforms: reviewPlatforms,
+        platforms: linesToList(reviewPlatforms.join('\n')).slice(0, 24),
         hltbMainHours,
         hltbExtrasHours,
         hltbCompletionistHours,
@@ -1508,7 +1514,7 @@ export function AddGamePage() {
           </label>
           <textarea
             value={reviewPlatforms.join('\n')}
-            onChange={(e) => setReviewPlatforms(linesToList(e.target.value).slice(0, 24))}
+            onChange={(e) => setReviewPlatforms(splitLinesKeepEmpty(e.target.value).slice(0, 40))}
             rows={4}
             className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
             placeholder={'PC\nPlayStation 4'}
