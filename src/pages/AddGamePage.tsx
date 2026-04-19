@@ -91,6 +91,43 @@ type BackloggdSuggestPayload = {
   llmError?: string
 }
 
+/** Steam store review–derived suggestions (bundle or future single-fetch). */
+type SteamReviewSuggestState = {
+  storeUrl: string
+  reviewSnippets: string[]
+  suggestedTags: string[]
+  suggestedPlayIfLiked: string[]
+  suggestedPros: string[]
+  suggestedCons: string[]
+  llmError?: string
+  fetchError?: string
+}
+
+type EditorLookupBundleJson = {
+  query: string
+  igdb: { ok: true; matches: IgdbGenreRow[] } | { ok: false; error: string }
+  backloggd: { ok: true; data: BackloggdSuggestPayload } | { ok: false; error: string }
+  steam:
+    | {
+        ok: true
+        appId: number
+        steamName: string
+        totalReviews: number
+        visibilityScore: number
+        storeUrl: string
+        suggestions: {
+          reviewSnippets: string[]
+          suggestedTags: string[]
+          suggestedPlayIfLiked: string[]
+          suggestedPros: string[]
+          suggestedCons: string[]
+          llmError?: string
+        } | null
+        suggestionsError?: string
+      }
+    | { ok: false; error: string }
+}
+
 function appendUniqueLines(current: string, lines: string[]): string {
   const exist = new Set(linesToList(current).map((s) => s.toLowerCase()))
   const add: string[] = []
@@ -196,6 +233,9 @@ export function AddGamePage() {
   const [steamResolvedName, setSteamResolvedName] = useState<string | null>(null)
   const [steamBusy, setSteamBusy] = useState(false)
   const [steamErr, setSteamErr] = useState<string | null>(null)
+  const [steamReviewSuggest, setSteamReviewSuggest] = useState<SteamReviewSuggestState | null>(null)
+  const [editorBundleBusy, setEditorBundleBusy] = useState(false)
+  const [editorBundleErr, setEditorBundleErr] = useState<string | null>(null)
 
   const [submitStatus, setSubmitStatus] = useState<string | null>(null)
   const [submitBusy, setSubmitBusy] = useState(false)
@@ -252,6 +292,9 @@ export function AddGamePage() {
     setSteamResolvedName(null)
     setSteamBusy(false)
     setSteamErr(null)
+    setSteamReviewSuggest(null)
+    setEditorBundleBusy(false)
+    setEditorBundleErr(null)
     setSubmitStatus(null)
     setSavedSlug(null)
     setEditComments([])
@@ -443,6 +486,9 @@ export function AddGamePage() {
       setHltbQuery(row.name)
       setIgdbMatches([])
       setIgdbErr(null)
+      setBackloggdData(null)
+      setBackloggdErr(null)
+      setSteamReviewSuggest(null)
       setSteamErr(null)
       setSteamSuggestedVisibility(null)
       if (typeof row.steam_app_id === 'number' && row.steam_app_id > 0) {
@@ -775,6 +821,7 @@ export function AddGamePage() {
     setSteamSuggestedVisibility(null)
     setSteamResolvedName(null)
     setSteamErr(null)
+    setSteamReviewSuggest(null)
   }, [])
 
   const fetchSteamSnapshot = useCallback(async () => {
@@ -784,6 +831,7 @@ export function AddGamePage() {
       return
     }
     setSteamErr(null)
+    setSteamReviewSuggest(null)
     setSteamBusy(true)
     try {
       const ry = parseReleaseYearFromLabel(releaseLabel.trim() || null)
@@ -818,6 +866,100 @@ export function AddGamePage() {
       setSteamBusy(false)
     }
   }, [clearSteamSnapshot, name, releaseLabel])
+
+  const runEditorLookupBundle = useCallback(async () => {
+    const q = extSearchQ().trim()
+    if (q.length < 2) {
+      setEditorBundleErr('Need at least 2 characters (game name or IGDB override field).')
+      return
+    }
+    setEditorBundleBusy(true)
+    setEditorBundleErr(null)
+    setIgdbErr(null)
+    setBackloggdErr(null)
+    setSteamErr(null)
+    try {
+      const res = await fetch('/api/editor-lookup-bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: q,
+          releaseLabel: releaseLabel.trim() || undefined,
+          useLlm: backloggdUseLlm,
+          ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+        }),
+      })
+      const json = (await res.json()) as EditorLookupBundleJson & { error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'Lookup bundle failed')
+
+      if (json.igdb.ok) {
+        setIgdbMatches(
+          json.igdb.matches.map((m) => ({
+            title: m.title,
+            externalId: m.externalId,
+            genres: Array.isArray(m.genres) ? m.genres : [],
+            releaseLabel: m.releaseLabel ?? null,
+          })),
+        )
+      } else {
+        setIgdbMatches([])
+        setIgdbErr(json.igdb.error)
+      }
+
+      if (json.backloggd.ok) {
+        setBackloggdData(json.backloggd.data)
+      } else {
+        setBackloggdData(null)
+        setBackloggdErr(json.backloggd.error)
+      }
+
+      if (json.steam.ok) {
+        setSteamAppId(json.steam.appId)
+        setSteamReviewCount(json.steam.totalReviews)
+        setSteamSuggestedVisibility(json.steam.visibilityScore)
+        setVisibilityScore(json.steam.visibilityScore)
+        setSteamResolvedName(json.steam.steamName)
+        if (json.steam.suggestions) {
+          setSteamReviewSuggest({
+            storeUrl: json.steam.storeUrl,
+            ...json.steam.suggestions,
+          })
+        } else if (json.steam.suggestionsError) {
+          setSteamReviewSuggest({
+            storeUrl: json.steam.storeUrl,
+            reviewSnippets: [],
+            suggestedTags: [],
+            suggestedPlayIfLiked: [],
+            suggestedPros: [],
+            suggestedCons: [],
+            fetchError: json.steam.suggestionsError,
+          })
+        } else {
+          setSteamReviewSuggest(null)
+        }
+      } else {
+        clearSteamSnapshot()
+        setSteamErr(json.steam.error)
+      }
+
+      setReleaseLabel((prev) => {
+        if (prev.trim()) return prev
+        const first = json.igdb.ok ? json.igdb.matches[0] : undefined
+        const rl = first?.releaseLabel?.trim()
+        return rl ?? prev
+      })
+    } catch (e) {
+      setEditorBundleErr(e instanceof Error ? e.message : 'Lookup bundle failed')
+    } finally {
+      setEditorBundleBusy(false)
+    }
+  }, [
+    extSearchQ,
+    releaseLabel,
+    backloggdUseLlm,
+    cloudLlmGeminiModel,
+    clearSteamSnapshot,
+  ])
 
   const submit = useCallback(async () => {
     setSubmitStatus(null)
@@ -1141,6 +1283,31 @@ export function AddGamePage() {
             onChange={(e) => setName(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
           />
+          <div className="mt-4 rounded-lg border border-teal-900/50 bg-teal-950/25 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-teal-400/90">One-click lookups</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+              Runs <strong className="text-zinc-400">IGDB</strong> genre search,{' '}
+              <strong className="text-zinc-400">Backloggd</strong> suggestions, and{' '}
+              <strong className="text-zinc-400">Steam</strong> popularity in one request. Steam also pulls recent English
+              store reviews for tags / play-if-liked / pros / cons (same heuristics and optional Cloud AI as Backloggd).
+              Query is the game name above, or the IGDB override field below if you filled it in.
+            </p>
+            <button
+              type="button"
+              disabled={
+                editorBundleBusy || (!!loadReviewSlug && (editLoading || !!editLoadError))
+              }
+              onClick={() => void runEditorLookupBundle()}
+              className="mt-3 rounded-lg bg-teal-700/90 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-600 disabled:opacity-50"
+            >
+              {editorBundleBusy ? 'Running IGDB + Backloggd + Steam…' : 'Fetch IGDB + Backloggd + Steam'}
+            </button>
+            {editorBundleErr ? <p className="mt-2 text-xs text-rose-300">{editorBundleErr}</p> : null}
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-600">
+              You can still run each source separately; partial failures show in each section (bundle does not stop the
+              others).
+            </p>
+          </div>
           <div className="mt-4 rounded-lg border border-zinc-700/80 bg-zinc-950/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Backloggd community</p>
             <p className="mt-2 text-xs leading-relaxed text-zinc-500">
@@ -1158,8 +1325,9 @@ export function AddGamePage() {
                 onChange={(e) => setBackloggdUseLlm(e.target.checked)}
               />
               <span>
-                <strong className="text-zinc-300">Cloud AI</strong> for play-if-liked + pros + cons (OpenAI or Gemini API
-                key on the server — runs on their GPUs, not yours). Tags stay heuristic. OpenAI is pay-as-you-go; Gemini
+                <strong className="text-zinc-300">Cloud AI</strong> for play-if-liked + pros + cons on Backloggd and on
+                Steam review text in the bundle (OpenAI or Gemini API key on the server — runs on their GPUs, not
+                yours). Tags stay heuristic. OpenAI is pay-as-you-go; Gemini
                 often has a free quota — see{' '}
                 <a className="text-amber-300/90 underline-offset-2 hover:underline" href="https://ai.google.dev/pricing" target="_blank" rel="noreferrer">
                   Gemini pricing
@@ -1169,7 +1337,7 @@ export function AddGamePage() {
             </label>
             <label className="mt-3 block text-xs text-zinc-400">
               <span className="font-medium text-zinc-300">
-                Preferred Gemini model (Backloggd Cloud AI & summary paragraph below)
+                Preferred Gemini model (Backloggd, bundle Steam reviews, & summary below)
               </span>
               <select
                 value={cloudLlmGeminiModel}
@@ -1199,11 +1367,11 @@ export function AddGamePage() {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={backloggdBusy}
+                disabled={backloggdBusy || editorBundleBusy}
                 onClick={() => void runBackloggdSuggestions()}
                 className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition hover:border-amber-500/50 hover:bg-zinc-800 disabled:opacity-50"
               >
-                {backloggdBusy ? 'Fetching Backloggd…' : 'Suggest from Backloggd'}
+                {backloggdBusy ? 'Fetching Backloggd…' : 'Suggest from Backloggd only'}
               </button>
               <a
                 className="text-xs font-semibold text-amber-300/90 underline-offset-2 hover:underline"
@@ -1547,17 +1715,20 @@ export function AddGamePage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Steam footprint (optional)</p>
             <p className="mt-2 text-xs leading-relaxed text-zinc-500">
               Resolves the Steam store title from your game name (like IGDB search), snapshots review totals, and
-              suggests a needle % from review volume + release year. That value is a starting point — tune it before
-              save. Nothing auto-refreshes after publish.
+              suggests a needle % from review volume + release year. The one-click bundle above also pulls recent
+              English store reviews here for optional tags / pros / cons (same pipeline as Backloggd heuristics + Cloud
+              AI). Tune the needle before save; nothing auto-refreshes after publish.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={steamBusy || (!!loadReviewSlug && (editLoading || !!editLoadError))}
+                disabled={
+                  steamBusy || editorBundleBusy || (!!loadReviewSlug && (editLoading || !!editLoadError))
+                }
                 onClick={() => void fetchSteamSnapshot()}
                 className="rounded-lg bg-sky-600/90 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
               >
-                {steamBusy ? 'Querying Steam…' : 'Fetch Steam popularity'}
+                {steamBusy ? 'Querying Steam…' : 'Fetch Steam popularity only'}
               </button>
               {steamAppId != null || steamReviewCount != null || visibilityScore != null ? (
                 <button
@@ -1627,6 +1798,156 @@ export function AddGamePage() {
                     </button>
                   ) : null}
                 </div>
+                {steamReviewSuggest ? (
+                  <div className="space-y-4 border-t border-zinc-800 pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-sky-400/90">
+                      From Steam store reviews
+                    </p>
+                    <p className="text-sm text-zinc-200">
+                      Matched{' '}
+                      <a
+                        href={steamReviewSuggest.storeUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-sky-200/95 underline-offset-2 hover:underline"
+                      >
+                        {steamResolvedName ?? 'Steam store'}
+                      </a>
+                      <span className="text-zinc-500"> · </span>
+                      <span className="font-mono text-xs text-zinc-500">English review sample</span>
+                    </p>
+                    {steamReviewSuggest.fetchError ? (
+                      <p className="text-xs text-amber-200/90">
+                        Review excerpts unavailable: {steamReviewSuggest.fetchError}
+                      </p>
+                    ) : null}
+                    {steamReviewSuggest.reviewSnippets.length ? (
+                      <details className="text-xs text-zinc-400">
+                        <summary className="cursor-pointer font-medium text-zinc-300">
+                          Review excerpts used ({steamReviewSuggest.reviewSnippets.length})
+                        </summary>
+                        <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded border border-zinc-800 bg-zinc-950/80 p-2 text-zinc-400">
+                          {steamReviewSuggest.reviewSnippets.map((s, i) => (
+                            <li key={`steam-snip-${i}`} className="leading-relaxed">
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
+                    {steamReviewSuggest.llmError ? (
+                      <p className="text-xs text-amber-200/90">Cloud AI refinement skipped: {steamReviewSuggest.llmError}</p>
+                    ) : null}
+                    {steamReviewSuggest.suggestedTags.length ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Suggested tags</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {steamReviewSuggest.suggestedTags.map((t) => (
+                            <span
+                              key={`steam-tag-${t}`}
+                              className="inline-flex items-center gap-1 rounded-full border border-zinc-600 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-200"
+                            >
+                              {t}
+                              <button
+                                type="button"
+                                onClick={() => addSuggestedTag(t)}
+                                className="rounded bg-amber-600/80 px-1.5 py-0.5 text-[10px] font-bold text-amber-950 hover:bg-amber-500"
+                              >
+                                Add
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {steamReviewSuggest.suggestedPlayIfLiked.length ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Play this if you liked</p>
+                        <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+                          {steamReviewSuggest.suggestedPlayIfLiked.map((line, i) => (
+                            <li key={`steam-pil-${i}-${line}`} className="flex flex-wrap items-center gap-2">
+                              <span className="min-w-0">{line}</span>
+                              <button
+                                type="button"
+                                onClick={() => setPlayIfLikedText((prev) => appendUniqueLines(prev, [line]))}
+                                className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-400 hover:text-amber-300"
+                              >
+                                Add line
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPlayIfLikedText((prev) =>
+                              appendUniqueLines(prev, steamReviewSuggest.suggestedPlayIfLiked),
+                            )
+                          }
+                          className="mt-2 text-xs font-semibold text-amber-300/90 underline-offset-2 hover:underline"
+                        >
+                          Add all lines
+                        </button>
+                      </div>
+                    ) : null}
+                    {steamReviewSuggest.suggestedPros.length ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Suggested pros</p>
+                        <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+                          {steamReviewSuggest.suggestedPros.map((line, i) => (
+                            <li key={`steam-pro-${i}-${line}`} className="flex flex-wrap items-start gap-2">
+                              <span className="min-w-0 flex-1 leading-snug">{line}</span>
+                              <button
+                                type="button"
+                                onClick={() => setProsText((prev) => appendUniqueLines(prev, [line]))}
+                                className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-400 hover:text-amber-300"
+                              >
+                                Append
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setProsText((prev) => appendUniqueLines(prev, steamReviewSuggest.suggestedPros))
+                          }
+                          className="mt-2 text-xs font-semibold text-amber-300/90 underline-offset-2 hover:underline"
+                        >
+                          Append all pros
+                        </button>
+                      </div>
+                    ) : null}
+                    {steamReviewSuggest.suggestedCons.length ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Suggested cons</p>
+                        <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+                          {steamReviewSuggest.suggestedCons.map((line, i) => (
+                            <li key={`steam-con-${i}-${line}`} className="flex flex-wrap items-start gap-2">
+                              <span className="min-w-0 flex-1 leading-snug">{line}</span>
+                              <button
+                                type="button"
+                                onClick={() => setConsText((prev) => appendUniqueLines(prev, [line]))}
+                                className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-400 hover:text-amber-300"
+                              >
+                                Append
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConsText((prev) => appendUniqueLines(prev, steamReviewSuggest.suggestedCons))
+                          }
+                          className="mt-2 text-xs font-semibold text-amber-300/90 underline-offset-2 hover:underline"
+                        >
+                          Append all cons
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -1688,11 +2009,11 @@ export function AddGamePage() {
             <div className="mt-3">
               <button
                 type="button"
-                disabled={igdbBusy}
+                disabled={igdbBusy || editorBundleBusy}
                 onClick={searchIgdbGenres}
                 className="rounded-lg bg-violet-600/90 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
               >
-                {igdbBusy ? 'Searching…' : 'Search IGDB'}
+                {igdbBusy ? 'Searching…' : 'Search IGDB only'}
               </button>
             </div>
             {igdbErr ? <p className="mt-2 text-xs text-rose-300">{igdbErr}</p> : null}

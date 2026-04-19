@@ -2,6 +2,8 @@
  * Minimal Steam Store (no API key): search + review totals for a popularity needle.
  */
 
+const STEAM_UA = 'GameRev/1.0 (editorial; +https://github.com/guygir/GameRev)'
+
 export type SteamVisibilityOk = {
   appId: number
   steamName: string
@@ -43,7 +45,7 @@ export async function fetchSteamVisibility(
 
   const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(q)}&cc=US&l=en`
   const searchRes = await fetch(searchUrl, {
-    headers: { Accept: 'application/json', 'User-Agent': 'GameRev/1.0 (editorial; +https://github.com/guygir/GameRev)' },
+    headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
   })
   if (!searchRes.ok) return { error: `Steam search HTTP ${searchRes.status}` }
   const searchJson = (await searchRes.json()) as { total?: number; items?: SteamSearchItem[] }
@@ -56,7 +58,7 @@ export async function fetchSteamVisibility(
 
   const revUrl = `https://store.steampowered.com/appreviews/${appId}?json=1&filter=all&language=all&purchase_type=all`
   const revRes = await fetch(revUrl, {
-    headers: { Accept: 'application/json', 'User-Agent': 'GameRev/1.0 (editorial; +https://github.com/guygir/GameRev)' },
+    headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
   })
   if (!revRes.ok) return { error: `Steam reviews HTTP ${revRes.status}` }
   const revJson = (await revRes.json()) as {
@@ -73,4 +75,32 @@ export async function fetchSteamVisibility(
   const visibilityScore = computeVisibilityScore(total, releaseYear)
 
   return { appId, steamName, totalReviews: total, visibilityScore }
+}
+
+/**
+ * First page of public Steam store reviews (English) for heuristic / LLM tagging like Backloggd.
+ * @see https://partner.steamgames.com/documentation/community_data
+ */
+export async function fetchSteamReviewBodies(
+  appId: number,
+): Promise<{ ok: true; bodies: string[] } | { ok: false; error: string }> {
+  const id = Math.floor(appId)
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'Invalid Steam app id.' }
+
+  const url = `https://store.steampowered.com/appreviews/${id}?json=1&filter=all&language=english&review_type=all&purchase_type=all&num_per_page=30`
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
+  })
+  if (!res.ok) return { ok: false, error: `Steam reviews HTTP ${res.status}` }
+  let json: { success?: number; reviews?: { review?: string }[] }
+  try {
+    json = (await res.json()) as { success?: number; reviews?: { review?: string }[] }
+  } catch {
+    return { ok: false, error: 'Steam reviews response was not valid JSON.' }
+  }
+  const reviews = Array.isArray(json.reviews) ? json.reviews : []
+  const bodies = reviews
+    .map((r) => (typeof r?.review === 'string' ? r.review.replace(/\r/g, '').trim() : ''))
+    .filter((t) => t.length >= 16)
+  return { ok: true, bodies: bodies.slice(0, 24) }
 }

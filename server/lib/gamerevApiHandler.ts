@@ -9,6 +9,7 @@ import { sampleCoverAccentFromUrl } from './sampleCoverAccentFromUrl.js'
 import { syncReaderCommentToGithub } from './githubGameComments.js'
 import { deleteReaderCommentFromBody } from './deleteReaderComment.js'
 import { fetchSteamVisibility } from './steamPopularity.js'
+import { runEditorLookupBundle } from './editorLookupBundle.js'
 import { generateReviewCapsuleSummary } from './reviewSummaryLlm.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
@@ -150,6 +151,22 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       if (out.ok === false) return { status: 502, body: { error: out.error } }
       const skipped = out.ok && 'skipped' in out && out.skipped === true
       return { status: 200, body: { ok: true, skipped } }
+    }
+
+    if (method === 'POST' && route === 'editor-lookup-bundle') {
+      const body = (jsonBody ?? {}) as {
+        query?: unknown
+        releaseLabel?: unknown
+        useLlm?: unknown
+        geminiModel?: unknown
+      }
+      const query = typeof body.query === 'string' ? body.query : ''
+      const releaseLabel = typeof body.releaseLabel === 'string' ? body.releaseLabel : undefined
+      const useLlm = body.useLlm === true
+      const geminiModel =
+        typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
+      const out = await runEditorLookupBundle(env, { query, releaseLabel, useLlm, geminiModel })
+      return { status: 200, body: out }
     }
 
     if (method === 'POST' && route === 'backloggd-suggestions') {

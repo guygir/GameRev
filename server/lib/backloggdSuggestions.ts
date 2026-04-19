@@ -171,7 +171,7 @@ function suggestCons(reviews: string[], max: number): string[] {
   return out
 }
 
-function mergeTagsPreferFirst(primary: string[], fallback: string[], max: number): string[] {
+export function mergeTagsPreferFirst(primary: string[], fallback: string[], max: number): string[] {
   const seen = new Set<string>()
   const out: string[] = []
   for (const t of primary) {
@@ -231,6 +231,38 @@ function suggestPlayIfLiked(reviews: string[], max: number): string[] {
   return out.slice(0, max)
 }
 
+/** Heuristic tags / play-if-liked / pros / cons from arbitrary review bodies (Backloggd, Steam, etc.). */
+export function heuristicEditorSuggestionsFromReviews(
+  reviewBodies: string[],
+  genreSeeds: string[],
+): {
+  suggestedTags: string[]
+  suggestedPlayIfLiked: string[]
+  suggestedPros: string[]
+  suggestedCons: string[]
+} {
+  if (!reviewBodies.length) {
+    return {
+      suggestedTags: genreSeeds.slice(0, 10),
+      suggestedPlayIfLiked: [],
+      suggestedPros: [],
+      suggestedCons: [],
+    }
+  }
+  const genreLower = new Set(genreSeeds.map((g) => g.toLowerCase()))
+  const keywordTags = topKeywords(reviewBodies, new Set([...STOP, ...genreLower]), 8)
+  const suggestedTags: string[] = [...genreSeeds]
+  for (const t of keywordTags) {
+    if (!suggestedTags.some((x) => x.toLowerCase() === t.toLowerCase())) suggestedTags.push(t)
+  }
+  return {
+    suggestedTags,
+    suggestedPlayIfLiked: suggestPlayIfLiked(reviewBodies, 10),
+    suggestedPros: suggestPros(reviewBodies, 8),
+    suggestedCons: suggestCons(reviewBodies, 8),
+  }
+}
+
 export type BackloggdSuggestionsResult = {
   backloggdGameUrl: string
   backloggdTitle: string
@@ -288,16 +320,11 @@ export async function fetchBackloggdSuggestions(
     }
   }
 
-  const genreLower = new Set(genres.map((g) => g.toLowerCase()))
-  const keywordTags = topKeywords(reviewBodies, new Set([...STOP, ...genreLower]), 8)
-  let suggestedTags = [...genres]
-  for (const t of keywordTags) {
-    if (!suggestedTags.some((x) => x.toLowerCase() === t.toLowerCase())) suggestedTags.push(t)
-  }
-
-  let suggestedPlayIfLiked = suggestPlayIfLiked(reviewBodies, 10)
-  let suggestedPros = suggestPros(reviewBodies, 8)
-  let suggestedCons = suggestCons(reviewBodies, 8)
+  const heur = heuristicEditorSuggestionsFromReviews(reviewBodies, genres)
+  let suggestedTags = heur.suggestedTags
+  let suggestedPlayIfLiked = heur.suggestedPlayIfLiked
+  let suggestedPros = heur.suggestedPros
+  let suggestedCons = heur.suggestedCons
   let llmError: string | undefined
 
   if (options.useLlm && options.env) {
