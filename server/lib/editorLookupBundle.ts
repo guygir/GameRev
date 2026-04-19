@@ -17,6 +17,7 @@ export type SteamReviewEditorSuggestions = {
   suggestedPlayIfLiked: string[]
   suggestedPros: string[]
   suggestedCons: string[]
+  refinedWithCloudLlm: boolean
   llmError?: string
 }
 
@@ -43,7 +44,6 @@ async function buildSteamReviewSuggestions(
   gameTitle: string,
   bodies: string[],
   igdbGenreSeeds: string[],
-  useLlm: boolean,
   geminiModel: string | undefined,
 ): Promise<SteamReviewEditorSuggestions> {
   const heur = heuristicEditorSuggestionsFromReviews(bodies, igdbGenreSeeds)
@@ -52,25 +52,25 @@ async function buildSteamReviewSuggestions(
   let suggestedPros = heur.suggestedPros
   let suggestedCons = heur.suggestedCons
   let llmError: string | undefined
+  let refinedWithCloudLlm = false
 
-  if (useLlm) {
-    const refined = await refineBackloggdWithLlm(
-      env,
-      {
-        gameTitle,
-        genres: suggestedTags.slice(0, 12),
-        reviewSnippets: bodies.slice(0, 8),
-      },
-      { geminiModel: geminiModel ?? null },
-    )
-    if (refined.ok) {
-      suggestedTags = mergeTagsPreferFirst(refined.data.suggestedTags, suggestedTags, 16)
-      suggestedPlayIfLiked = refined.data.suggestedPlayIfLiked
-      suggestedPros = refined.data.suggestedPros
-      suggestedCons = refined.data.suggestedCons
-    } else {
-      llmError = refined.error
-    }
+  const refined = await refineBackloggdWithLlm(
+    env,
+    {
+      gameTitle,
+      genres: suggestedTags.slice(0, 12),
+      reviewSnippets: bodies.slice(0, 8),
+    },
+    { geminiModel: geminiModel ?? null },
+  )
+  if (refined.ok) {
+    refinedWithCloudLlm = true
+    suggestedTags = mergeTagsPreferFirst(refined.data.suggestedTags, suggestedTags, 16)
+    suggestedPlayIfLiked = refined.data.suggestedPlayIfLiked
+    suggestedPros = refined.data.suggestedPros
+    suggestedCons = refined.data.suggestedCons
+  } else {
+    llmError = refined.error
   }
 
   return {
@@ -79,6 +79,7 @@ async function buildSteamReviewSuggestions(
     suggestedPlayIfLiked,
     suggestedPros,
     suggestedCons,
+    refinedWithCloudLlm,
     ...(llmError ? { llmError } : {}),
   }
 }
@@ -88,7 +89,6 @@ export async function runEditorLookupBundle(
   input: {
     query: string
     releaseLabel?: string
-    useLlm?: boolean
     geminiModel?: string
   },
 ): Promise<EditorLookupBundleResponse> {
@@ -103,7 +103,6 @@ export async function runEditorLookupBundle(
     }
   }
 
-  const useLlm = input.useLlm === true
   const geminiModel = input.geminiModel?.trim() || undefined
   const releaseYear = parseReleaseYearFromLabel(input.releaseLabel?.trim() || null)
 
@@ -118,7 +117,7 @@ export async function runEditorLookupBundle(
     }
   })()
 
-  const backloggdP = fetchBackloggdSuggestions(query, { useLlm, env, geminiModel })
+  const backloggdP = fetchBackloggdSuggestions(query, { env, geminiModel })
   const steamVisP = fetchSteamVisibility(query, releaseYear)
 
   const [igdb, backloggd, steamVis] = await Promise.all([igdbP, backloggdP, steamVisP])
@@ -147,7 +146,6 @@ export async function runEditorLookupBundle(
           steamVis.steamName,
           bodiesRes.bodies,
           igdbGenres,
-          useLlm,
           geminiModel,
         )
       } catch (e) {

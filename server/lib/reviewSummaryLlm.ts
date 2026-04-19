@@ -166,14 +166,40 @@ export type ReviewSummaryLlmInput = {
   cons: string
 }
 
+/** Non-LLM fallback when cloud models are unavailable or fail (editor should treat as low quality). */
+function heuristicCapsuleFromProsCons(gameName: string, pros: string, cons: string): string {
+  const pl = pros
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 5)
+  const cl = cons
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 4)
+  const parts: string[] = []
+  parts.push(`${gameName}.`)
+  if (pl.length) parts.push(pl.join(' '))
+  if (cl.length) parts.push(`Tradeoffs: ${cl.join(' ')}`)
+  return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, 1500)
+}
+
+export type ReviewCapsuleSummaryOk = {
+  ok: true
+  summary: string
+  /** True when OpenAI/Gemini did not produce the text (keys missing or both providers failed). */
+  usedHeuristicFallback: boolean
+}
+
 /**
- * One-paragraph review capsule from editor pros/cons (OpenAI if configured, else Gemini; same tiering as Backloggd refine).
+ * One-paragraph review capsule from editor pros/cons (OpenAI if configured, else Gemini; heuristic fallback if neither works).
  */
 export async function generateReviewCapsuleSummary(
   env: ServerProcessEnv,
   input: ReviewSummaryLlmInput,
   opts?: { geminiModel?: string | null },
-): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
+): Promise<ReviewCapsuleSummaryOk | { ok: false; error: string }> {
   const gameName = input.gameName.trim()
   const pros = input.pros.trim()
   const cons = input.cons.trim()
@@ -188,30 +214,33 @@ export async function generateReviewCapsuleSummary(
   const openai = (env.OPENAI_API_KEY ?? '').trim()
   const gemini = (env.GEMINI_API_KEY ?? '').trim()
 
+  const fallback = (): ReviewCapsuleSummaryOk => ({
+    ok: true,
+    summary: heuristicCapsuleFromProsCons(gameName, pros, cons),
+    usedHeuristicFallback: true,
+  })
+
   if (!openai && !gemini) {
-    return { ok: false, error: 'No OPENAI_API_KEY or GEMINI_API_KEY on the server.' }
+    return fallback()
   }
 
   if (openai) {
     try {
       const out = await summarizeOpenAi(openai, prompt)
-      if (out) return { ok: true, summary: out }
-    } catch (e) {
-      if (!gemini) {
-        return { ok: false, error: e instanceof Error ? e.message : 'OpenAI request failed' }
-      }
+      if (out) return { ok: true, summary: out, usedHeuristicFallback: false }
+    } catch {
+      if (!gemini) return fallback()
     }
   }
 
   if (gemini) {
     try {
       const out = await summarizeGemini(gemini, geminiModelsToTry(env, opts?.geminiModel ?? null), prompt)
-      if (out) return { ok: true, summary: out }
-      return { ok: false, error: 'Gemini returned no usable summary JSON.' }
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : 'Gemini request failed' }
+      if (out) return { ok: true, summary: out, usedHeuristicFallback: false }
+    } catch {
+      /* fall through */
     }
   }
 
-  return { ok: false, error: 'OpenAI returned no usable summary and Gemini key is not set.' }
+  return fallback()
 }

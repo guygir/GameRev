@@ -272,13 +272,15 @@ export type BackloggdSuggestionsResult = {
   suggestedPlayIfLiked: string[]
   suggestedPros: string[]
   suggestedCons: string[]
-  /** When `useLlm` was requested but refinement failed or no API key. */
+  /** True when OpenAI/Gemini refinement succeeded for tags / play-if-liked / pros / cons. */
+  refinedWithCloudLlm: boolean
+  /** When refinement was attempted but failed or keys were missing (heuristics only). */
   llmError?: string
 }
 
 export async function fetchBackloggdSuggestions(
   rawQuery: string,
-  options: { useLlm?: boolean; env?: ServerProcessEnv; geminiModel?: string } = {},
+  options: { env?: ServerProcessEnv; geminiModel?: string } = {},
 ): Promise<{ ok: true; data: BackloggdSuggestionsResult } | { ok: false; error: string }> {
   const query = rawQuery.trim()
   if (query.length < 2) return { ok: false, error: 'Query too short (need at least 2 characters).' }
@@ -316,6 +318,7 @@ export async function fetchBackloggdSuggestions(
         suggestedPlayIfLiked: [],
         suggestedPros: [],
         suggestedCons: [],
+        refinedWithCloudLlm: false,
       },
     }
   }
@@ -326,8 +329,9 @@ export async function fetchBackloggdSuggestions(
   let suggestedPros = heur.suggestedPros
   let suggestedCons = heur.suggestedCons
   let llmError: string | undefined
+  let refinedWithCloudLlm = false
 
-  if (options.useLlm && options.env) {
+  if (options.env) {
     const refined = await refineBackloggdWithLlm(
       options.env,
       {
@@ -338,11 +342,12 @@ export async function fetchBackloggdSuggestions(
       { geminiModel: options.geminiModel },
     )
     if (refined.ok) {
+      refinedWithCloudLlm = true
       suggestedTags = mergeTagsPreferFirst(refined.data.suggestedTags, suggestedTags, 16)
       suggestedPlayIfLiked = refined.data.suggestedPlayIfLiked
       suggestedPros = refined.data.suggestedPros
       suggestedCons = refined.data.suggestedCons
-    } else if (refined.ok === false) {
+    } else {
       llmError = refined.error
     }
   }
@@ -358,6 +363,7 @@ export async function fetchBackloggdSuggestions(
       suggestedPlayIfLiked,
       suggestedPros,
       suggestedCons,
+      refinedWithCloudLlm,
       ...(llmError ? { llmError } : {}),
     },
   }

@@ -88,6 +88,7 @@ type BackloggdSuggestPayload = {
   suggestedPlayIfLiked: string[]
   suggestedPros: string[]
   suggestedCons: string[]
+  refinedWithCloudLlm: boolean
   llmError?: string
 }
 
@@ -99,6 +100,7 @@ type SteamReviewSuggestState = {
   suggestedPlayIfLiked: string[]
   suggestedPros: string[]
   suggestedCons: string[]
+  refinedWithCloudLlm: boolean
   llmError?: string
   fetchError?: string
 }
@@ -121,6 +123,7 @@ type EditorLookupBundleJson = {
           suggestedPlayIfLiked: string[]
           suggestedPros: string[]
           suggestedCons: string[]
+          refinedWithCloudLlm: boolean
           llmError?: string
         } | null
         suggestionsError?: string
@@ -209,11 +212,16 @@ export function AddGamePage() {
   const [backloggdBusy, setBackloggdBusy] = useState(false)
   const [backloggdErr, setBackloggdErr] = useState<string | null>(null)
   const [backloggdData, setBackloggdData] = useState<BackloggdSuggestPayload | null>(null)
-  const [backloggdUseLlm, setBackloggdUseLlm] = useState(false)
-  /** When Cloud AI uses Gemini (after OpenAI if configured), try this model first — free-tier Flash only. */
+  /** When Gemini is used (after OpenAI if configured), try this model first — free-tier Flash only. */
   const [cloudLlmGeminiModel, setCloudLlmGeminiModel] = useState('')
   const [summarySuggestBusy, setSummarySuggestBusy] = useState(false)
   const [summarySuggestErr, setSummarySuggestErr] = useState<string | null>(null)
+  /** Last successful summary request used heuristic text, not cloud LLM output. */
+  const [summaryNotFromCloudAi, setSummaryNotFromCloudAi] = useState(false)
+  const [outlineFromSummaryBusy, setOutlineFromSummaryBusy] = useState(false)
+  const [outlineFromSummaryErr, setOutlineFromSummaryErr] = useState<string | null>(null)
+  /** Last successful outline-from-summary used heuristic data, not cloud LLM output. */
+  const [outlineNotFromCloudAi, setOutlineNotFromCloudAi] = useState(false)
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [tagDraft, setTagDraft] = useState('')
 
@@ -285,6 +293,8 @@ export function AddGamePage() {
     setProsText('')
     setConsText('')
     setSummaryText('')
+    setOutlineFromSummaryErr(null)
+    setOutlineFromSummaryBusy(false)
     setSteamAppId(null)
     setSteamReviewCount(null)
     setVisibilityScore(null)
@@ -673,8 +683,7 @@ export function AddGamePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: q,
-          useLlm: backloggdUseLlm,
-          ...(backloggdUseLlm && cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+          ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
         }),
       })
       const json = (await res.json()) as BackloggdSuggestPayload & { error?: string }
@@ -686,7 +695,7 @@ export function AddGamePage() {
     } finally {
       setBackloggdBusy(false)
     }
-  }, [name, backloggdUseLlm, cloudLlmGeminiModel])
+  }, [name, cloudLlmGeminiModel])
 
   const runReviewSummarySuggest = useCallback(async () => {
     const gameName = name.trim()
@@ -702,6 +711,7 @@ export function AddGamePage() {
     }
     setSummarySuggestBusy(true)
     setSummarySuggestErr(null)
+    setSummaryNotFromCloudAi(false)
     try {
       const res = await fetch('/api/review-summary-suggest', {
         method: 'POST',
@@ -713,17 +723,102 @@ export function AddGamePage() {
           ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
         }),
       })
-      const json = (await res.json()) as { summary?: string; error?: string }
+      const json = (await res.json()) as { summary?: string; usedHeuristicFallback?: boolean; error?: string }
       if (!res.ok) throw new Error(json.error ?? 'Summary suggestion failed')
       const s = typeof json.summary === 'string' ? json.summary.trim() : ''
       if (!s) throw new Error('Empty summary from server')
       setSummaryText(s)
+      setSummaryNotFromCloudAi(json.usedHeuristicFallback === true)
     } catch (e) {
       setSummarySuggestErr(e instanceof Error ? e.message : 'Summary suggestion failed')
     } finally {
       setSummarySuggestBusy(false)
     }
   }, [name, prosText, consText, cloudLlmGeminiModel])
+
+  const runOutlineFromSummary = useCallback(async () => {
+    const gameName = name.trim()
+    if (gameName.length < 2) {
+      setOutlineFromSummaryErr('Set the game name first (at least 2 characters).')
+      return
+    }
+    const summary = summaryText.trim()
+    if (summary.length < 40) {
+      setOutlineFromSummaryErr('Write a longer summary first (at least a few sentences).')
+      return
+    }
+    setOutlineFromSummaryBusy(true)
+    setOutlineFromSummaryErr(null)
+    setOutlineNotFromCloudAi(false)
+    try {
+      const res = await fetch('/api/review-outline-from-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameName,
+          summary,
+          ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+        }),
+      })
+      const json = (await res.json()) as {
+        pros?: unknown
+        cons?: unknown
+        playIfLiked?: unknown
+        stats?: unknown
+        usedHeuristicFallback?: boolean
+        error?: string
+      }
+      if (!res.ok) throw new Error(json.error ?? 'Outline inference failed')
+      const pros = Array.isArray(json.pros) ? json.pros.filter((x): x is string => typeof x === 'string') : []
+      const cons = Array.isArray(json.cons) ? json.cons.filter((x): x is string => typeof x === 'string') : []
+      const pil = Array.isArray(json.playIfLiked)
+        ? json.playIfLiked.filter((x): x is string => typeof x === 'string')
+        : []
+      if (!pros.length && !cons.length && !pil.length) {
+        throw new Error('Model returned no pros, cons, or play-if-liked lines.')
+      }
+      setProsText(
+        pros
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .join('\n'),
+      )
+      setConsText(
+        cons
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .join('\n'),
+      )
+      setPlayIfLikedText(
+        pil
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .join('\n'),
+      )
+      if (json.stats && typeof json.stats === 'object' && json.stats !== null) {
+        if (isGameStats(json.stats)) {
+          setStats(json.stats)
+        } else {
+          setStats((prev) => {
+            const next = { ...prev }
+            const box = json.stats as Record<string, unknown>
+            for (const axis of statAxes) {
+              const v = box[axis]
+              if (typeof v === 'number' && Number.isFinite(v)) {
+                next[axis] = Math.min(100, Math.max(0, Math.round(v)))
+              }
+            }
+            return next
+          })
+        }
+      }
+      setOutlineNotFromCloudAi(json.usedHeuristicFallback === true)
+    } catch (e) {
+      setOutlineFromSummaryErr(e instanceof Error ? e.message : 'Outline inference failed')
+    } finally {
+      setOutlineFromSummaryBusy(false)
+    }
+  }, [name, summaryText, cloudLlmGeminiModel])
 
   const addSuggestedTag = useCallback((tag: string) => {
     const t = tag.trim()
@@ -885,7 +980,6 @@ export function AddGamePage() {
         body: JSON.stringify({
           query: q,
           releaseLabel: releaseLabel.trim() || undefined,
-          useLlm: backloggdUseLlm,
           ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
         }),
       })
@@ -932,6 +1026,7 @@ export function AddGamePage() {
             suggestedPlayIfLiked: [],
             suggestedPros: [],
             suggestedCons: [],
+            refinedWithCloudLlm: false,
             fetchError: json.steam.suggestionsError,
           })
         } else {
@@ -953,13 +1048,7 @@ export function AddGamePage() {
     } finally {
       setEditorBundleBusy(false)
     }
-  }, [
-    extSearchQ,
-    releaseLabel,
-    backloggdUseLlm,
-    cloudLlmGeminiModel,
-    clearSteamSnapshot,
-  ])
+  }, [extSearchQ, releaseLabel, cloudLlmGeminiModel, clearSteamSnapshot])
 
   const submit = useCallback(async () => {
     setSubmitStatus(null)
@@ -1289,8 +1378,9 @@ export function AddGamePage() {
               Runs <strong className="text-zinc-400">IGDB</strong> genre search,{' '}
               <strong className="text-zinc-400">Backloggd</strong> suggestions, and{' '}
               <strong className="text-zinc-400">Steam</strong> popularity in one request. Steam also pulls recent English
-              store reviews for tags / play-if-liked / pros / cons (same heuristics and optional Cloud AI as Backloggd).
-              Query is the game name above, or the IGDB override field below if you filled it in.
+              store reviews for tags / play-if-liked / pros / cons. The server tries cloud LLM refinement first when keys
+              are configured; if that fails, you still get heuristics and a red notice in each section. Query is the game
+              name above, or the IGDB override field if you filled it in.
             </p>
             <button
               type="button"
@@ -1315,29 +1405,19 @@ export function AddGamePage() {
               <span className="font-mono text-zinc-400">/search/games/&lt;name&gt;</span>, takes the{' '}
               <strong className="text-zinc-400">first hit</strong>, loads its page for genres, then pulls{' '}
               <strong className="text-zinc-400">recent written reviews</strong> (not per-review comment threads). Tags use
-              genres + repeated words; play-if-liked / pros / cons use simple heuristics unless you enable cloud AI below.
+              genres + repeated words; play-if-liked / pros / cons are refined with cloud LLM when the server has keys,
+              otherwise heuristics only (shown in red when not from AI).
             </p>
-            <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-zinc-400">
-              <input
-                type="checkbox"
-                className="mt-0.5 border-zinc-600 text-amber-500 focus:ring-amber-500/40"
-                checked={backloggdUseLlm}
-                onChange={(e) => setBackloggdUseLlm(e.target.checked)}
-              />
-              <span>
-                <strong className="text-zinc-300">Cloud AI</strong> for play-if-liked + pros + cons on Backloggd and on
-                Steam review text in the bundle (OpenAI or Gemini API key on the server — runs on their GPUs, not
-                yours). Tags stay heuristic. OpenAI is pay-as-you-go; Gemini
-                often has a free quota — see{' '}
-                <a className="text-amber-300/90 underline-offset-2 hover:underline" href="https://ai.google.dev/pricing" target="_blank" rel="noreferrer">
-                  Gemini pricing
-                </a>
-                .
-              </span>
-            </label>
+            <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+              OpenAI / Gemini calls use keys on the server. OpenAI is pay-as-you-go; Gemini often has a free quota — see{' '}
+              <a className="text-amber-300/90 underline-offset-2 hover:underline" href="https://ai.google.dev/pricing" target="_blank" rel="noreferrer">
+                Gemini pricing
+              </a>
+              .
+            </p>
             <label className="mt-3 block text-xs text-zinc-400">
               <span className="font-medium text-zinc-300">
-                Preferred Gemini model (Backloggd, bundle Steam reviews, & summary below)
+                Preferred Gemini model (Backloggd, bundle Steam reviews, summary & outline-from-summary below)
               </span>
               <select
                 value={cloudLlmGeminiModel}
@@ -1383,8 +1463,18 @@ export function AddGamePage() {
               </a>
             </div>
             {backloggdErr ? <p className="mt-2 text-xs text-rose-300">{backloggdErr}</p> : null}
-            {backloggdData?.llmError ? (
-              <p className="mt-2 text-xs text-amber-200/90">AI refinement skipped: {backloggdData.llmError}</p>
+            {backloggdData &&
+            !backloggdData.refinedWithCloudLlm &&
+            (backloggdData.llmError ||
+              backloggdData.reviewSnippets.length > 0 ||
+              backloggdData.suggestedTags.length > 0 ||
+              backloggdData.suggestedPlayIfLiked.length > 0 ||
+              backloggdData.suggestedPros.length > 0 ||
+              backloggdData.suggestedCons.length > 0) ? (
+              <p className="mt-2 rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
+                Backloggd suggestions were not produced by cloud AI (heuristics or fetch only).
+                {backloggdData.llmError ? ` ${backloggdData.llmError}` : ''}
+              </p>
             ) : null}
             {backloggdData ? (
               <div className="mt-4 space-y-4 border-t border-zinc-800 pt-4">
@@ -1835,8 +1925,17 @@ export function AddGamePage() {
                         </ul>
                       </details>
                     ) : null}
-                    {steamReviewSuggest.llmError ? (
-                      <p className="text-xs text-amber-200/90">Cloud AI refinement skipped: {steamReviewSuggest.llmError}</p>
+                    {steamReviewSuggest.fetchError ? null : !steamReviewSuggest.refinedWithCloudLlm &&
+                      (steamReviewSuggest.llmError ||
+                        steamReviewSuggest.reviewSnippets.length > 0 ||
+                        steamReviewSuggest.suggestedTags.length > 0 ||
+                        steamReviewSuggest.suggestedPlayIfLiked.length > 0 ||
+                        steamReviewSuggest.suggestedPros.length > 0 ||
+                        steamReviewSuggest.suggestedCons.length > 0) ? (
+                      <p className="rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
+                        Steam review suggestions were not refined by cloud AI (heuristics only).
+                        {steamReviewSuggest.llmError ? ` ${steamReviewSuggest.llmError}` : ''}
+                      </p>
                     ) : null}
                     {steamReviewSuggest.suggestedTags.length ? (
                       <div>
@@ -2185,18 +2284,45 @@ export function AddGamePage() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={summarySuggestBusy}
+              disabled={summarySuggestBusy || outlineFromSummaryBusy}
               onClick={() => void runReviewSummarySuggest()}
               className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition hover:border-amber-500/50 hover:bg-zinc-800 disabled:opacity-50"
             >
-              {summarySuggestBusy ? 'Generating…' : 'Suggest paragraph (Cloud AI)'}
+              {summarySuggestBusy ? 'Generating…' : 'Suggest paragraph'}
             </button>
             <span className="text-[11px] text-zinc-500">
-              Uses game name + Pros + Cons; same OpenAI / Gemini keys as Backloggd Cloud AI. Replaces this box on
-              success. Optional Gemini order: <strong className="text-zinc-400">Backloggd</strong> card above.
+              Uses game name + Pros + Cons; replaces this box on success. Server tries cloud LLM first; if that fails, a
+              heuristic paragraph is used and flagged in red. Gemini order: dropdown in the Backloggd card above.
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={outlineFromSummaryBusy || summarySuggestBusy}
+              onClick={() => void runOutlineFromSummary()}
+              className="rounded-lg border border-violet-600/60 bg-violet-950/50 px-3 py-1.5 text-xs font-semibold text-violet-100 transition hover:border-violet-500/70 hover:bg-violet-900/50 disabled:opacity-50"
+            >
+              {outlineFromSummaryBusy ? 'Inferring outline…' : 'Fill outline from summary'}
+            </button>
+            <span className="text-[11px] text-zinc-500">
+              Uses game name + this summary. On success, replaces <strong className="text-zinc-400">Pros</strong>,{' '}
+              <strong className="text-zinc-400">Cons</strong>, <strong className="text-zinc-400">Play if you liked</strong>
+              , and all <strong className="text-zinc-400">hexagon</strong> values (see section above). Cloud LLM is tried
+              first; heuristic outline is flagged in red if the model path failed.
             </span>
           </div>
           {summarySuggestErr ? <p className="text-xs text-rose-300">{summarySuggestErr}</p> : null}
+          {outlineFromSummaryErr ? <p className="text-xs text-rose-300">{outlineFromSummaryErr}</p> : null}
+          {summaryNotFromCloudAi ? (
+            <p className="mt-2 rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
+              This summary was filled using heuristic fallback, not cloud AI output.
+            </p>
+          ) : null}
+          {outlineNotFromCloudAi ? (
+            <p className="mt-2 rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
+              The outline fields were filled using heuristic fallback, not cloud AI output.
+            </p>
+          ) : null}
           <textarea
             value={summaryText}
             onChange={(e) => setSummaryText(e.target.value)}

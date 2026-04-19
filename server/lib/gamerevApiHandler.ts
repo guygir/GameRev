@@ -11,6 +11,7 @@ import { deleteReaderCommentFromBody } from './deleteReaderComment.js'
 import { fetchSteamVisibility } from './steamPopularity.js'
 import { runEditorLookupBundle } from './editorLookupBundle.js'
 import { generateReviewCapsuleSummary } from './reviewSummaryLlm.js'
+import { generateOutlineFromSummary } from './outlineFromSummaryLlm.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 const hltb = new HowLongToBeatService()
@@ -157,27 +158,42 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       const body = (jsonBody ?? {}) as {
         query?: unknown
         releaseLabel?: unknown
-        useLlm?: unknown
         geminiModel?: unknown
       }
       const query = typeof body.query === 'string' ? body.query : ''
       const releaseLabel = typeof body.releaseLabel === 'string' ? body.releaseLabel : undefined
-      const useLlm = body.useLlm === true
       const geminiModel =
         typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
-      const out = await runEditorLookupBundle(env, { query, releaseLabel, useLlm, geminiModel })
+      const out = await runEditorLookupBundle(env, { query, releaseLabel, geminiModel })
       return { status: 200, body: out }
     }
 
     if (method === 'POST' && route === 'backloggd-suggestions') {
-      const body = (jsonBody ?? {}) as { query?: unknown; useLlm?: unknown; geminiModel?: unknown }
+      const body = (jsonBody ?? {}) as { query?: unknown; geminiModel?: unknown }
       const q = typeof body.query === 'string' ? body.query : ''
-      const useLlm = body.useLlm === true
       const geminiModel =
         typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
-      const out = await fetchBackloggdSuggestions(q, { useLlm, env, geminiModel })
+      const out = await fetchBackloggdSuggestions(q, { env, geminiModel })
       if (out.ok === false) return { status: 422, body: { error: out.error } }
       return { status: 200, body: out.data }
+    }
+
+    if (method === 'POST' && route === 'review-outline-from-summary') {
+      const body = (jsonBody ?? {}) as {
+        gameName?: unknown
+        summary?: unknown
+        geminiModel?: unknown
+      }
+      const gameName = typeof body.gameName === 'string' ? body.gameName : ''
+      const summary = typeof body.summary === 'string' ? body.summary : ''
+      const geminiModel =
+        typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
+      const out = await generateOutlineFromSummary(env, { gameName, summary }, { geminiModel })
+      if (out.ok === false) return { status: 422, body: { error: out.error } }
+      return {
+        status: 200,
+        body: { ...out.data, usedHeuristicFallback: out.usedHeuristicFallback },
+      }
     }
 
     if (method === 'POST' && route === 'review-summary-suggest') {
@@ -194,7 +210,10 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
       const out = await generateReviewCapsuleSummary(env, { gameName, pros, cons }, { geminiModel })
       if (out.ok === false) return { status: 422, body: { error: out.error } }
-      return { status: 200, body: { summary: out.summary } }
+      return {
+        status: 200,
+        body: { summary: out.summary, usedHeuristicFallback: out.usedHeuristicFallback },
+      }
     }
 
     if (method === 'POST' && route === 'sample-cover-accent') {
