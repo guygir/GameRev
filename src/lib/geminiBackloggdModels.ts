@@ -8,7 +8,6 @@ export const BACKLOGGD_GEMINI_TRY_MODELS = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
 ] as const
 
 export type BackloggdGeminiModelId = (typeof BACKLOGGD_GEMINI_TRY_MODELS)[number]
@@ -26,5 +25,4 @@ export const BACKLOGGD_GEMINI_MODEL_SELECT_OPTIONS: readonly { value: string; la
   { value: 'gemini-2.5-flash', label: '2.5 Flash' },
   { value: 'gemini-2.0-flash', label: '2.0 Flash' },
   { value: 'gemini-1.5-flash', label: '1.5 Flash' },
-  { value: 'gemini-1.5-flash-8b', label: '1.5 Flash-8B' },
 ] as const

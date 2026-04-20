@@ -69,7 +69,9 @@ export function geminiModelsToTry(env: ServerProcessEnv, uiPreferred?: string | 
     return dedupeModelOrder([preferred, ...tryList.filter((m) => m !== preferred)])
   }
   const primary = (env.GEMINI_MODEL ?? '').trim()
-  const ordered = primary ? [primary, ...tryList] : [...tryList]
+  // Only prepend env model when it matches the UI whitelist; unknown IDs (or retired names) get 404 and would waste the first attempts.
+  const ordered =
+    primary && isAllowedBackloggdGeminiModel(primary) ? [primary, ...tryList] : [...tryList]
   return dedupeModelOrder(ordered)
 }
 
