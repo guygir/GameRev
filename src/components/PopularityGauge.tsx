@@ -52,10 +52,32 @@ function arcGradientStops(hue: number, mode: ReviewMode): { a: string; b: string
   }
 }
 
+function arcGradientStopsGray(level: number, mode: ReviewMode): { a: string; b: string; c: string; track: string } {
+  const t = Math.min(100, Math.max(0, level)) / 100
+  if (mode === 'dark') {
+    const mid = Math.round(40 + t * 24)
+    return {
+      track: `hsla(0 0% ${34 + t * 8}% / 0.35)`,
+      a: `hsla(0 0% ${mid}% / 0.48)`,
+      b: `hsl(0 0% ${mid + 14}%)`,
+      c: `hsl(0 0% ${mid + 6}%)`,
+    }
+  }
+  const mid = Math.round(36 + t * 20)
+  return {
+    track: `hsla(0 0% ${88 - t * 6}% / 0.75)`,
+    a: `hsla(0 0% ${mid}% / 0.5)`,
+    b: `hsl(0 0% ${mid + 8}%)`,
+    c: `hsl(0 0% ${mid + 2}%)`,
+  }
+}
+
 type PopularityGaugeProps = {
   value: number
   mode: ReviewMode
   accentHue: number
+  /** When set, arc uses neutral stops (grayscale review accent). */
+  accentGrayLevel?: number | null
   fontDisplayClass: string
   fontBodyClass: string
 }
@@ -64,6 +86,7 @@ export function PopularityGauge({
   value,
   mode,
   accentHue,
+  accentGrayLevel,
   fontDisplayClass,
   fontBodyClass,
 }: PopularityGaugeProps) {
@@ -73,7 +96,10 @@ export function PopularityGauge({
   const isDark = mode === 'dark'
   const pct = `${(v * 100).toFixed(0)}%`
   const h = ((Math.round(accentHue) % 360) + 360) % 360
-  const stops = arcGradientStops(h, mode)
+  const stops =
+    typeof accentGrayLevel === 'number' && Number.isFinite(accentGrayLevel)
+      ? arcGradientStopsGray(accentGrayLevel, mode)
+      : arcGradientStops(h, mode)
 
   const labelTone = isDark ? 'text-[#f4e9d8]/48' : 'text-zinc-500'
   const textFill = isDark ? '#fff4e4' : '#18181b'

@@ -9,7 +9,9 @@ import { getReviewTheme, type ReviewMode } from '../review/getReviewTheme'
 import {
   DEFAULT_DARK_REVIEW_ACCENT_HUE,
   reviewDarkAccentCssVars,
+  reviewDarkGrayscaleCssVars,
   reviewLightAccentCssVars,
+  reviewLightGrayscaleCssVars,
 } from '../review/reviewDarkAccent'
 import clsx from 'clsx'
 import { PopularityGauge } from './PopularityGauge'
@@ -39,6 +41,8 @@ export type GameReviewViewModel = {
   accentHue: number | null
   /** Legacy `accent_preset` (0–4) when `accent_hue` is null. */
   accentPreset: number | null
+  /** DB `accent_gray_level` (0–100); when set, review uses achromatic accents. */
+  accentGrayLevel: number | null
   /** Steam popularity needle 0–1; null hides the gauge. */
   visibilityScore: number | null
 }
@@ -93,9 +97,15 @@ export function GameReviewView({
   navHomeLabel,
   navHomeTo,
 }: GameReviewViewProps) {
-  /** Per-game accent (slug / DB); used for dark CSS vars and light gauge hue. */
+  const isGrayscale = vm.accentGrayLevel != null && Number.isFinite(vm.accentGrayLevel)
+  /** Per-game accent (slug / DB); used for chromatic CSS vars and gauge when not grayscale. */
   const accentHue = darkAccentHue ?? DEFAULT_DARK_REVIEW_ACCENT_HUE
-  const theme = useMemo(() => getReviewTheme(mode, { accentHue }), [mode, accentHue])
+  const theme = useMemo(() => {
+    if (isGrayscale) {
+      return getReviewTheme(mode, { accentGrayLevel: vm.accentGrayLevel })
+    }
+    return getReviewTheme(mode, { accentHue: darkAccentHue ?? DEFAULT_DARK_REVIEW_ACCENT_HUE })
+  }, [mode, darkAccentHue, isGrayscale, vm.accentGrayLevel])
 
   const cover = useMemo(() => {
     if (!vm.coverImageUrl) {
@@ -121,7 +131,15 @@ export function GameReviewView({
   return (
     <div
       className={clsx(theme.shell, theme.fontBody)}
-      style={mode === 'dark' ? reviewDarkAccentCssVars(accentHue) : reviewLightAccentCssVars(accentHue)}
+      style={
+        isGrayscale
+          ? mode === 'dark'
+            ? reviewDarkGrayscaleCssVars(vm.accentGrayLevel!)
+            : reviewLightGrayscaleCssVars(vm.accentGrayLevel!)
+          : mode === 'dark'
+            ? reviewDarkAccentCssVars(accentHue)
+            : reviewLightAccentCssVars(accentHue)
+      }
     >
       {theme.ambiance === 'anthropic' ? (
         <>
@@ -332,6 +350,7 @@ export function GameReviewView({
                     value={vm.visibilityScore}
                     mode={mode}
                     accentHue={accentHue}
+                    accentGrayLevel={isGrayscale ? vm.accentGrayLevel : null}
                     fontDisplayClass={theme.fontDisplay}
                     fontBodyClass={theme.fontBody}
                   />

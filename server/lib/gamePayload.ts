@@ -13,6 +13,8 @@ export type AddGameBody = {
   accentHue?: number | null
   /** @deprecated Prefer accentHue; 0–4 maps to fixed hues on save. */
   accentPreset?: number | null
+  /** 0–100 achromatic accent (B&amp;W cover path); when set, `accent_hue` is stored null. */
+  accentGrayLevel?: number | null
   coverImageUrl: string | null
   platforms: string[]
   hltbMainHours: number | null
@@ -149,8 +151,40 @@ export function parseAccentHue(raw: unknown): number | null {
   return h
 }
 
+/** 0–100 grayscale accent level, or null = not grayscale. */
+export function parseAccentGrayLevel(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n)) return null
+  return Math.min(100, Math.max(0, Math.round(n)))
+}
+
 /**
- * Resolves `accent_hue` for DB. Prefers `accentHue` over legacy `accentPreset`.
+ * DB row: grayscale wins when `accentGrayLevel` is a number in the body.
+ * Otherwise chromatic `accent_hue` from hue/preset (or null = auto).
+ */
+export function resolveAccentRowFromBody(b: Partial<AddGameBody>): {
+  accent_hue: number | null
+  accent_gray_level: number | null
+} {
+  if (Object.prototype.hasOwnProperty.call(b, 'accentGrayLevel')) {
+    const raw = b.accentGrayLevel
+    if (raw !== undefined && raw !== null) {
+      const gl = parseAccentGrayLevel(raw)
+      if (gl !== null) {
+        return { accent_hue: null, accent_gray_level: gl }
+      }
+    }
+  }
+  const hr = resolveAccentHueFromBody(b)
+  return {
+    accent_hue: hr === undefined ? null : hr,
+    accent_gray_level: null,
+  }
+}
+
+/**
+ * Resolves `accent_hue` only (chromatic). Prefers `accentHue` over legacy `accentPreset`.
  * Returns `undefined` when neither field is present (update: do not patch accent).
  */
 export function resolveAccentHueFromBody(b: Partial<AddGameBody>): number | null | undefined {

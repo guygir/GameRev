@@ -7,6 +7,7 @@ import {
   ACCENT_PRESET_HUES,
   ACCENT_PRESET_LABELS,
   DEFAULT_DARK_REVIEW_ACCENT_HUE,
+  reviewDarkGrayscaleCssVars,
 } from '../review/reviewDarkAccent'
 import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference } from '../lib/reviewModePreference'
@@ -195,10 +196,20 @@ export function AddGamePage() {
   const [reviewPlatforms, setReviewPlatforms] = useState<string[]>([])
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null)
   const [coverPreviewFailed, setCoverPreviewFailed] = useState(false)
-  /** null = auto (slug hash); 0–359 = saved dark accent hue. */
+  /** null = auto (slug hash); 0–359 = saved chromatic accent when `accentGrayLevel` is null. */
   const [accentHue, setAccentHue] = useState<number | null>(null)
+  /** null = not grayscale; 0–100 = saved achromatic accent (neutral grays on the live review). */
+  const [accentGrayLevel, setAccentGrayLevel] = useState<number | null>(null)
   const [accentMsg, setAccentMsg] = useState<string | null>(null)
   const [coverAccentBusy, setCoverAccentBusy] = useState(false)
+  /** Bias for JPEG sampling only (when not already in grayscale accent mode). */
+  const [coverBalanceBias, setCoverBalanceBias] = useState(50)
+  const [prosTidyBusy, setProsTidyBusy] = useState(false)
+  const [consTidyBusy, setConsTidyBusy] = useState(false)
+  const [prosTidyErr, setProsTidyErr] = useState<string | null>(null)
+  const [consTidyErr, setConsTidyErr] = useState<string | null>(null)
+  const [prosTidyNonAi, setProsTidyNonAi] = useState(false)
+  const [consTidyNonAi, setConsTidyNonAi] = useState(false)
   const [hltbMainHours, setHltbMainHours] = useState<number | null>(null)
   const [hltbExtrasHours, setHltbExtrasHours] = useState<number | null>(null)
   const [hltbCompletionistHours, setHltbCompletionistHours] = useState<number | null>(null)
@@ -273,6 +284,8 @@ export function AddGamePage() {
     setCoverImageUrl(null)
     setCoverPreviewFailed(false)
     setAccentHue(null)
+    setAccentGrayLevel(null)
+    setCoverBalanceBias(50)
     setAccentMsg(null)
     setCoverAccentBusy(false)
     setHltbMainHours(null)
@@ -390,6 +403,7 @@ export function AddGamePage() {
         release_label: string | null
         accent_hue?: number | null
         accent_preset?: number | null
+        accent_gray_level?: number | null
         cover_image_url: string | null
         platforms: string[] | null
         hltb_main_hours: number | null
@@ -417,6 +431,7 @@ export function AddGamePage() {
           release_label,
           accent_hue,
           accent_preset,
+          accent_gray_level,
           cover_image_url,
           platforms,
           hltb_main_hours,
@@ -468,13 +483,26 @@ export function AddGamePage() {
       )
       setReleaseLabel(row.release_label?.trim() ?? '')
       setCoverImageUrl(row.cover_image_url)
-      let ah: number | null = null
-      if (typeof row.accent_hue === 'number' && row.accent_hue >= 0 && row.accent_hue < 360) {
-        ah = Math.round(row.accent_hue)
-      } else if (typeof row.accent_preset === 'number' && row.accent_preset >= 0 && row.accent_preset <= 4) {
-        ah = ACCENT_PRESET_HUES[row.accent_preset]
+      let gray: number | null = null
+      if (
+        typeof row.accent_gray_level === 'number' &&
+        row.accent_gray_level >= 0 &&
+        row.accent_gray_level <= 100
+      ) {
+        gray = Math.round(row.accent_gray_level)
       }
-      setAccentHue(ah)
+      setAccentGrayLevel(gray)
+      if (gray != null) {
+        setAccentHue(null)
+      } else {
+        let ah: number | null = null
+        if (typeof row.accent_hue === 'number' && row.accent_hue >= 0 && row.accent_hue < 360) {
+          ah = Math.round(row.accent_hue)
+        } else if (typeof row.accent_preset === 'number' && row.accent_preset >= 0 && row.accent_preset <= 4) {
+          ah = ACCENT_PRESET_HUES[row.accent_preset]
+        }
+        setAccentHue(ah)
+      }
       setReviewPlatforms(Array.isArray(row.platforms) ? [...row.platforms] : [])
       setHltbMainHours(row.hltb_main_hours)
       setHltbExtrasHours(row.hltb_extras_hours)
@@ -883,22 +911,34 @@ export function AddGamePage() {
     setAccentMsg(null)
     setCoverAccentBusy(true)
     try {
+      const monoBias = accentGrayLevel != null ? accentGrayLevel : coverBalanceBias
       const res = await fetch('/api/sample-cover-accent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: coverImageUrl }),
+        body: JSON.stringify({ url: coverImageUrl, monoBias }),
       })
       const rawText = await res.text()
-      let json: { hue?: number; error?: string } = {}
+      let json: { hue?: number; grayLevel?: number; source?: string; error?: string } = {}
       try {
-        json = JSON.parse(rawText) as { hue?: number; error?: string }
+        json = JSON.parse(rawText) as { hue?: number; grayLevel?: number; source?: string; error?: string }
       } catch {
         /* e.g. HTML if /api was rewritten to index.html — fix vercel.json */
       }
-      if (res.ok && typeof json.hue === 'number' && Number.isFinite(json.hue)) {
+      if (res.ok && json.source === 'saturated' && typeof json.hue === 'number' && Number.isFinite(json.hue)) {
         let h = Math.round(json.hue) % 360
         if (h < 0) h += 360
         setAccentHue(h)
+        setAccentGrayLevel(null)
+        setAccentMsg(null)
+        return
+      }
+      if (res.ok && json.source === 'mono' && typeof json.grayLevel === 'number' && Number.isFinite(json.grayLevel)) {
+        const gl = Math.min(100, Math.max(0, Math.round(json.grayLevel)))
+        setAccentHue(null)
+        setAccentGrayLevel(gl)
+        setAccentMsg(
+          'This cover has almost no saturated color — saved accent is grayscale (neutral grays on the review). Use the balance slider and click again to nudge, then save.',
+        )
         return
       }
       setAccentMsg(json.error ?? 'Could not sample this cover. Set a hue manually.')
@@ -907,7 +947,73 @@ export function AddGamePage() {
     } finally {
       setCoverAccentBusy(false)
     }
-  }, [coverImageUrl])
+  }, [coverImageUrl, coverBalanceBias, accentGrayLevel])
+
+  const runProsTidy = useCallback(async () => {
+    const raw = prosText.trim()
+    if (!raw) {
+      setProsTidyErr('Add at least one pro line first.')
+      return
+    }
+    setProsTidyBusy(true)
+    setProsTidyErr(null)
+    setProsTidyNonAi(false)
+    try {
+      const res = await fetch('/api/review-pros-cons-tidy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameName: name.trim(),
+          side: 'pros',
+          lines: prosText,
+          ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+        }),
+      })
+      const json = (await res.json()) as { lines?: string; usedHeuristicFallback?: boolean; error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'Tidy failed')
+      const next = typeof json.lines === 'string' ? json.lines.trimEnd() : ''
+      if (!next) throw new Error('Empty result from server')
+      setProsText(next)
+      setProsTidyNonAi(json.usedHeuristicFallback === true)
+    } catch (e) {
+      setProsTidyErr(e instanceof Error ? e.message : 'Tidy failed')
+    } finally {
+      setProsTidyBusy(false)
+    }
+  }, [name, prosText, cloudLlmGeminiModel])
+
+  const runConsTidy = useCallback(async () => {
+    const raw = consText.trim()
+    if (!raw) {
+      setConsTidyErr('Add at least one con line first.')
+      return
+    }
+    setConsTidyBusy(true)
+    setConsTidyErr(null)
+    setConsTidyNonAi(false)
+    try {
+      const res = await fetch('/api/review-pros-cons-tidy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameName: name.trim(),
+          side: 'cons',
+          lines: consText,
+          ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+        }),
+      })
+      const json = (await res.json()) as { lines?: string; usedHeuristicFallback?: boolean; error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'Tidy failed')
+      const next = typeof json.lines === 'string' ? json.lines.trimEnd() : ''
+      if (!next) throw new Error('Empty result from server')
+      setConsText(next)
+      setConsTidyNonAi(json.usedHeuristicFallback === true)
+    } catch (e) {
+      setConsTidyErr(e instanceof Error ? e.message : 'Tidy failed')
+    } finally {
+      setConsTidyBusy(false)
+    }
+  }, [name, consText, cloudLlmGeminiModel])
 
   const clearSteamSnapshot = useCallback(() => {
     setSteamAppId(null)
@@ -1092,7 +1198,8 @@ export function AddGamePage() {
         cons: linesToList(consText),
         summary: summaryText.trim() || null,
         playIfLiked,
-        accentHue,
+        accentHue: accentGrayLevel != null ? null : accentHue,
+        accentGrayLevel: accentGrayLevel != null ? accentGrayLevel : null,
         catalogRank: catalogRankPosition,
         ...(loadReviewSlug ? { slug: loadReviewSlug } : {}),
         ...(loadReviewSlug || hasSteamForCreate
@@ -1108,8 +1215,10 @@ export function AddGamePage() {
       const json = (await res.json()) as { slug?: string; error?: string }
       if (!res.ok) {
         const hint =
-          /platforms|release_label|accent_preset|accent_hue|catalog_rank|schema cache/i.test(json.error ?? '')
-            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, `20260415120000_accent_hue.sql`, `20260416100000_catalog_rank.sql`, and `20260417120000_review_summary.sql`.'
+          /platforms|release_label|accent_preset|accent_hue|accent_gray_level|catalog_rank|schema cache/i.test(
+            json.error ?? '',
+          )
+            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, `20260415120000_accent_hue.sql`, `20260419120000_accent_gray_level.sql`, `20260416100000_catalog_rank.sql`, and `20260417120000_review_summary.sql`.'
             : ''
         throw new Error((json.error ?? 'Save failed') + hint)
       }
@@ -1135,6 +1244,7 @@ export function AddGamePage() {
     }
   }, [
     accentHue,
+    accentGrayLevel,
     catalogRankPosition,
     consText,
     summaryText,
@@ -1636,19 +1746,21 @@ export function AddGamePage() {
           <div className="mt-6 rounded-lg border border-zinc-700/80 bg-zinc-950/50 p-4">
             <p className="text-sm font-medium text-zinc-200">Dark mode leading color</p>
             <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-              Shown in dark review mode. <span className="text-zinc-400">Auto</span> uses a stable hue from the URL slug.
-              <span className="text-zinc-400"> Custom</span> saves the exact hue (0–359°); the review reuses the same HSL
-              recipe as always, so every game can have its own accent.
+              Shown in dark review mode. <span className="text-zinc-400">Auto</span> picks a stable hue from the slug.{' '}
+              <span className="text-zinc-400">Color</span> saves a chromatic hue (0–359°).{' '}
+              <span className="text-zinc-400">Grayscale</span> saves a neutral accent (no color — only light/dark gray
+              tones), ideal for B&amp;W cover art.
             </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:gap-x-6 sm:gap-y-2">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
                 <input
                   type="radio"
                   name="accentHueMode"
                   className="border-zinc-600 text-emerald-500 focus:ring-emerald-500/40"
-                  checked={accentHue === null}
+                  checked={accentHue === null && accentGrayLevel === null}
                   onChange={() => {
                     setAccentHue(null)
+                    setAccentGrayLevel(null)
                     setAccentMsg(null)
                   }}
                 />
@@ -1659,16 +1771,31 @@ export function AddGamePage() {
                   type="radio"
                   name="accentHueMode"
                   className="border-zinc-600 text-emerald-500 focus:ring-emerald-500/40"
-                  checked={accentHue !== null}
+                  checked={accentHue !== null && accentGrayLevel === null}
                   onChange={() => {
+                    setAccentGrayLevel(null)
                     setAccentHue((h) => (h == null ? DEFAULT_DARK_REVIEW_ACCENT_HUE : h))
                     setAccentMsg(null)
                   }}
                 />
-                Custom hue
+                Color (hue)
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
+                <input
+                  type="radio"
+                  name="accentHueMode"
+                  className="border-zinc-600 text-emerald-500 focus:ring-emerald-500/40"
+                  checked={accentGrayLevel !== null}
+                  onChange={() => {
+                    setAccentHue(null)
+                    setAccentGrayLevel((g) => (g == null ? 50 : g))
+                    setAccentMsg(null)
+                  }}
+                />
+                Grayscale
               </label>
             </div>
-            {accentHue !== null ? (
+            {accentHue !== null && accentGrayLevel === null ? (
               <div className="mt-4 space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <input
@@ -1722,6 +1849,37 @@ export function AddGamePage() {
                 </div>
               </div>
             ) : null}
+            {accentGrayLevel !== null ? (
+              <div className="mt-4 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-3">
+                <label className="block text-xs font-medium text-zinc-400" htmlFor="accent-gray-level">
+                  Light ↔ dark (grayscale accent)
+                </label>
+                <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
+                  0 = darker neutrals, 100 = lighter neutrals on the public review (still grayscale — no chromatic hue).
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Dark</span>
+                  <input
+                    id="accent-gray-level"
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={accentGrayLevel}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n)) return
+                      setAccentGrayLevel(Math.min(100, Math.max(0, Math.round(n))))
+                      setAccentMsg(null)
+                    }}
+                    className="h-2 min-w-[min(100%,14rem)] flex-1 cursor-pointer accent-zinc-400"
+                  />
+                  <span className="w-10 shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Light
+                  </span>
+                  <span className="font-mono text-xs tabular-nums text-zinc-500">{accentGrayLevel}</span>
+                </div>
+              </div>
+            ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -1732,12 +1890,64 @@ export function AddGamePage() {
                 {coverAccentBusy ? 'Sampling cover…' : 'Suggest from cover'}
               </button>
               <span className="text-xs text-zinc-500">
-                Server reads the HowLongToBeat JPEG and sets <span className="text-zinc-400">custom hue</span> to the
-                dominant color (not Auto).
+                HowLongToBeat JPEG: <span className="text-zinc-400">color</span> accent when possible; otherwise{' '}
+                <span className="text-zinc-400">grayscale</span> accent level from the art (saved as Grayscale).
               </span>
             </div>
+            {looksLikeHttpImageUrl(coverImageUrl) && coverImageUrl && accentGrayLevel === null ? (
+              <div className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-3">
+                <label className="block text-xs font-medium text-zinc-400" htmlFor="cover-balance-bias">
+                  Sampling bias (before you choose Grayscale)
+                </label>
+                <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
+                  Used only while accent is Auto or Color. Nudges the B&amp;W cover read; switch to Grayscale to use the
+                  same control for the saved review.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Dark</span>
+                  <input
+                    id="cover-balance-bias"
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={coverBalanceBias}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n)) return
+                      setCoverBalanceBias(Math.min(100, Math.max(0, Math.round(n))))
+                    }}
+                    className="h-2 min-w-[min(100%,14rem)] flex-1 cursor-pointer accent-zinc-400"
+                  />
+                  <span className="w-10 shrink-0 text-right text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Light
+                  </span>
+                  <span className="font-mono text-xs tabular-nums text-zinc-500">{coverBalanceBias}</span>
+                </div>
+              </div>
+            ) : null}
             {accentMsg ? <p className="mt-2 text-xs text-amber-200/90">{accentMsg}</p> : null}
-            {accentHue !== null ? (
+            {accentGrayLevel !== null ? (
+              <div className="mt-3 flex items-center gap-3 rounded-lg border border-zinc-700/60 bg-zinc-950/80 px-3 py-2.5">
+                <div
+                  className="h-11 w-11 shrink-0 rounded-lg ring-2 ring-white/10"
+                  style={reviewDarkGrayscaleCssVars(accentGrayLevel)}
+                  aria-hidden
+                >
+                  <div className="h-full w-full rounded-md bg-[color:var(--review-accent)] opacity-90" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-zinc-100">
+                    Saved accent preview
+                    <span className="ml-2 font-normal text-zinc-500">grayscale</span>
+                  </p>
+                  <p className="mt-0.5 font-mono text-xs text-zinc-400">
+                    <span className="text-zinc-300">level {accentGrayLevel}</span>
+                    <span className="text-zinc-600"> — </span>
+                    <span className="text-zinc-500">neutral grays on /g/…</span>
+                  </p>
+                </div>
+              </div>
+            ) : accentHue !== null ? (
               <div className="mt-3 flex items-center gap-3 rounded-lg border border-zinc-700/60 bg-zinc-950/80 px-3 py-2.5">
                 <div
                   className="h-11 w-11 shrink-0 rounded-lg ring-2 ring-white/10"
@@ -1750,7 +1960,7 @@ export function AddGamePage() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-zinc-100">
                     Saved accent preview
-                    <span className="ml-2 font-normal text-zinc-500">custom hue</span>
+                    <span className="ml-2 font-normal text-zinc-500">color</span>
                   </p>
                   <p className="mt-0.5 font-mono text-xs text-zinc-400">
                     <span className="text-zinc-300">{accentHue}°</span>
@@ -2252,27 +2462,57 @@ export function AddGamePage() {
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold text-white">Pros and Cons</h2>
-          <p className="text-xs text-zinc-500">One bullet per line.</p>
+          <p className="text-xs text-zinc-500">
+            One bullet per line. <span className="text-zinc-400">(AI)</span> clusters themes (e.g. several puzzle lines →
+            one bullet), then rewrites as a shorter list — server tries cloud LLM first; basic dedupe if keys fail.
+          </p>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="text-sm font-medium text-zinc-300">Pros</label>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium text-zinc-300">Pros</span>
+                <button
+                  type="button"
+                  disabled={prosTidyBusy || consTidyBusy}
+                  onClick={() => void runProsTidy()}
+                  className="rounded-md border border-violet-500/50 bg-violet-950/40 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-violet-200/95 transition hover:border-violet-400/60 hover:bg-violet-900/50 disabled:opacity-40"
+                >
+                  {prosTidyBusy ? '…' : '(AI)'}
+                </button>
+              </div>
               <textarea
                 value={prosText}
                 onChange={(e) => setProsText(e.target.value)}
                 rows={8}
                 className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
               />
+              {prosTidyErr ? <p className="mt-1 text-xs text-rose-300">{prosTidyErr}</p> : null}
             </div>
             <div>
-              <label className="text-sm font-medium text-zinc-300">Cons</label>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium text-zinc-300">Cons</span>
+                <button
+                  type="button"
+                  disabled={prosTidyBusy || consTidyBusy}
+                  onClick={() => void runConsTidy()}
+                  className="rounded-md border border-violet-500/50 bg-violet-950/40 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-violet-200/95 transition hover:border-violet-400/60 hover:bg-violet-900/50 disabled:opacity-40"
+                >
+                  {consTidyBusy ? '…' : '(AI)'}
+                </button>
+              </div>
               <textarea
                 value={consText}
                 onChange={(e) => setConsText(e.target.value)}
                 rows={8}
                 className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
               />
+              {consTidyErr ? <p className="mt-1 text-xs text-rose-300">{consTidyErr}</p> : null}
             </div>
           </div>
+          {prosTidyNonAi || consTidyNonAi ? (
+            <p className="rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
+              Last tidy used basic dedupe only, not cloud AI aggregation.
+            </p>
+          ) : null}
         </section>
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">

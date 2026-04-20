@@ -9,7 +9,7 @@ import {
   optionalSteamReviewCount,
   optionalVisibilityScore01,
   parseStats,
-  resolveAccentHueFromBody,
+  resolveAccentRowFromBody,
   resolvePlayIfLiked,
   type AddGameBody,
 } from './gamePayload.js'
@@ -69,7 +69,8 @@ export async function updateGameFromBody(
 
   const shouldPatchAccent =
     Object.prototype.hasOwnProperty.call(b, 'accentHue') ||
-    Object.prototype.hasOwnProperty.call(b, 'accentPreset')
+    Object.prototype.hasOwnProperty.call(b, 'accentPreset') ||
+    Object.prototype.hasOwnProperty.call(b, 'accentGrayLevel')
 
   const platforms = normalizeStringList(b.platforms, 24, 48)
   const genres = normalizeStringList(b.genres, 24, 80)
@@ -129,7 +130,14 @@ export async function updateGameFromBody(
   if (delT) return { ok: false, status: 500, error: delT.message }
 
   const accentRowPatch = shouldPatchAccent
-    ? { accent_hue: resolveAccentHueFromBody(b) as number | null, accent_preset: null as null }
+    ? (() => {
+        const row = resolveAccentRowFromBody(b)
+        return {
+          accent_hue: row.accent_hue,
+          accent_gray_level: row.accent_gray_level,
+          accent_preset: null as null,
+        }
+      })()
     : {}
 
   const { error: updErr } = await sb

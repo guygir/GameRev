@@ -19,6 +19,7 @@ type GameJoinRow = {
   release_label: string | null
   accent_hue?: number | null
   accent_preset?: number | null
+  accent_gray_level?: number | null
   cover_image_url: string | null
   platforms: string[] | null
   hltb_main_hours: number | null
@@ -86,6 +87,7 @@ export function GameReviewPage() {
           release_label,
           accent_hue,
           accent_preset,
+          accent_gray_level,
           cover_image_url,
           platforms,
           hltb_main_hours,
@@ -149,12 +151,26 @@ export function GameReviewPage() {
         stats: row.stats,
         radarLabel: `${row.name} review stats radar chart`,
         accentHue:
-          typeof row.accent_hue === 'number' && row.accent_hue >= 0 && row.accent_hue < 360
-            ? Math.round(row.accent_hue)
-            : null,
+          typeof row.accent_gray_level === 'number' &&
+          row.accent_gray_level >= 0 &&
+          row.accent_gray_level <= 100
+            ? null
+            : typeof row.accent_hue === 'number' && row.accent_hue >= 0 && row.accent_hue < 360
+              ? Math.round(row.accent_hue)
+              : null,
         accentPreset:
-          typeof row.accent_preset === 'number' && row.accent_preset >= 0 && row.accent_preset <= 4
-            ? row.accent_preset
+          typeof row.accent_gray_level === 'number' &&
+          row.accent_gray_level >= 0 &&
+          row.accent_gray_level <= 100
+            ? null
+            : typeof row.accent_preset === 'number' && row.accent_preset >= 0 && row.accent_preset <= 4
+              ? row.accent_preset
+              : null,
+        accentGrayLevel:
+          typeof row.accent_gray_level === 'number' &&
+          row.accent_gray_level >= 0 &&
+          row.accent_gray_level <= 100
+            ? Math.round(row.accent_gray_level)
             : null,
         visibilityScore:
           typeof row.visibility_score === 'number' && Number.isFinite(row.visibility_score)
@@ -260,6 +276,7 @@ export function GameReviewPage() {
         mode={mode}
         initialComments={comments}
         darkAccentHue={darkAccentHue}
+        accentGrayLevel={vm.accentGrayLevel}
       />
     </div>
   )

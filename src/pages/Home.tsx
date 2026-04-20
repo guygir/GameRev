@@ -22,8 +22,7 @@ import { readReviewModePreference, writeReviewModePreference } from '../lib/revi
 import { getReviewTheme, type ReviewMode } from '../review/getReviewTheme'
 import {
   DEFAULT_DARK_REVIEW_ACCENT_HUE,
-  homeCatalogCardCssVars,
-  resolveDarkAccentHue,
+  resolveCatalogCardCssVars,
   reviewDarkAccentCssVars,
 } from '../review/reviewDarkAccent'
 
@@ -34,6 +33,7 @@ type GameCard = {
   cover_image_url: string | null
   accent_hue: number | null
   accent_preset: number | null
+  accent_gray_level: number | null
   created_at: string
   catalog_rank: number | null
 }
@@ -75,7 +75,9 @@ export function Home() {
       try {
         const q = sb
           .from('games')
-          .select('slug, name, subtitle, cover_image_url, accent_hue, accent_preset, created_at, catalog_rank')
+          .select(
+            'slug, name, subtitle, cover_image_url, accent_hue, accent_preset, accent_gray_level, created_at, catalog_rank',
+          )
         const { data, error } = await (
           catalogSort === 'rank'
             ? q.order('catalog_rank', { ascending: true })
@@ -205,17 +207,26 @@ export function Home() {
         ) : catalogLayout === 'compact' ? (
           <ul className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {games.map((g) => {
-              const cardHue = resolveDarkAccentHue(g.slug, {
-                accentHue:
-                  typeof g.accent_hue === 'number' && g.accent_hue >= 0 && g.accent_hue < 360
-                    ? Math.round(g.accent_hue)
-                    : null,
-                accentPreset:
-                  typeof g.accent_preset === 'number' && g.accent_preset >= 0 && g.accent_preset <= 4
-                    ? g.accent_preset
-                    : null,
-              })
-              const cardStyle = homeCatalogCardCssVars(cardHue, isLight ? 'light' : 'dark')
+              const cardStyle = resolveCatalogCardCssVars(
+                g.slug,
+                {
+                  accentHue:
+                    typeof g.accent_hue === 'number' && g.accent_hue >= 0 && g.accent_hue < 360
+                      ? Math.round(g.accent_hue)
+                      : null,
+                  accentPreset:
+                    typeof g.accent_preset === 'number' && g.accent_preset >= 0 && g.accent_preset <= 4
+                      ? g.accent_preset
+                      : null,
+                  accentGrayLevel:
+                    typeof g.accent_gray_level === 'number' &&
+                    g.accent_gray_level >= 0 &&
+                    g.accent_gray_level <= 100
+                      ? Math.round(g.accent_gray_level)
+                      : null,
+                },
+                isLight ? 'light' : 'dark',
+              )
               const coverMeta = catalogCoverMetaLine(catalogSort, g)
               return (
                 <li key={g.slug} className="min-w-0">
@@ -311,17 +322,26 @@ export function Home() {
         ) : (
           <ul className="mt-6 space-y-4">
             {games.map((g) => {
-              const cardHue = resolveDarkAccentHue(g.slug, {
-                accentHue:
-                  typeof g.accent_hue === 'number' && g.accent_hue >= 0 && g.accent_hue < 360
-                    ? Math.round(g.accent_hue)
-                    : null,
-                accentPreset:
-                  typeof g.accent_preset === 'number' && g.accent_preset >= 0 && g.accent_preset <= 4
-                    ? g.accent_preset
-                    : null,
-              })
-              const cardStyle = homeCatalogCardCssVars(cardHue, isLight ? 'light' : 'dark')
+              const cardStyle = resolveCatalogCardCssVars(
+                g.slug,
+                {
+                  accentHue:
+                    typeof g.accent_hue === 'number' && g.accent_hue >= 0 && g.accent_hue < 360
+                      ? Math.round(g.accent_hue)
+                      : null,
+                  accentPreset:
+                    typeof g.accent_preset === 'number' && g.accent_preset >= 0 && g.accent_preset <= 4
+                      ? g.accent_preset
+                      : null,
+                  accentGrayLevel:
+                    typeof g.accent_gray_level === 'number' &&
+                    g.accent_gray_level >= 0 &&
+                    g.accent_gray_level <= 100
+                      ? Math.round(g.accent_gray_level)
+                      : null,
+                },
+                isLight ? 'light' : 'dark',
+              )
               const coverMeta = catalogCoverMetaLine(catalogSort, g)
               return (
                 <li key={g.slug}>

@@ -12,6 +12,7 @@ import { fetchSteamVisibility } from './steamPopularity.js'
 import { runEditorLookupBundle } from './editorLookupBundle.js'
 import { generateReviewCapsuleSummary } from './reviewSummaryLlm.js'
 import { generateOutlineFromSummary } from './outlineFromSummaryLlm.js'
+import { tidyProsConsLines } from './prosConsTidyLlm.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 const hltb = new HowLongToBeatService()
@@ -217,11 +218,39 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
     }
 
     if (method === 'POST' && route === 'sample-cover-accent') {
-      const body = (jsonBody ?? {}) as { url?: unknown }
+      const body = (jsonBody ?? {}) as { url?: unknown; monoBias?: unknown }
       const rawUrl = typeof body.url === 'string' ? body.url : ''
-      const out = await sampleCoverAccentFromUrl(rawUrl)
+      const monoBias =
+        typeof body.monoBias === 'number' && Number.isFinite(body.monoBias) ? body.monoBias : undefined
+      const out = await sampleCoverAccentFromUrl(rawUrl, monoBias)
       if (out.ok === false) return { status: 422, body: { error: out.error } }
-      return { status: 200, body: { hue: out.hue } }
+      if (out.source === 'saturated') {
+        return { status: 200, body: { source: out.source, hue: out.hue } }
+      }
+      return { status: 200, body: { source: out.source, grayLevel: out.grayLevel } }
+    }
+
+    if (method === 'POST' && route === 'review-pros-cons-tidy') {
+      const body = (jsonBody ?? {}) as {
+        gameName?: unknown
+        side?: unknown
+        lines?: unknown
+        geminiModel?: unknown
+      }
+      const gameName = typeof body.gameName === 'string' ? body.gameName : ''
+      const rawLines = typeof body.lines === 'string' ? body.lines : ''
+      const side = body.side === 'pros' || body.side === 'cons' ? body.side : null
+      if (!side) {
+        return { status: 422, body: { error: 'Missing or invalid side (use "pros" or "cons").' } }
+      }
+      const geminiModel =
+        typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
+      const out = await tidyProsConsLines(env, { gameName, side, rawLines }, { geminiModel })
+      if (out.ok === false) return { status: 422, body: { error: out.error } }
+      return {
+        status: 200,
+        body: { lines: out.lines, usedHeuristicFallback: out.usedHeuristicFallback },
+      }
     }
 
     if (method === 'GET' && route === 'review') {
@@ -243,6 +272,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
           release_label,
           accent_hue,
           accent_preset,
+          accent_gray_level,
           cover_image_url,
           platforms,
           hltb_main_hours,
@@ -272,6 +302,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         release_label: string | null
         accent_hue: number | null
         accent_preset: number | null
+        accent_gray_level: number | null
         cover_image_url: string | null
         platforms: string[] | null
         hltb_main_hours: number | null
@@ -304,6 +335,12 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
             releaseLabel: row.release_label,
             accentHue: row.accent_hue ?? null,
             accentPreset: row.accent_preset ?? null,
+            accentGrayLevel:
+              typeof row.accent_gray_level === 'number' &&
+              row.accent_gray_level >= 0 &&
+              row.accent_gray_level <= 100
+                ? Math.round(row.accent_gray_level)
+                : null,
             coverImageUrl: row.cover_image_url,
             platforms: row.platforms ?? [],
             hltbMainHours: row.hltb_main_hours,

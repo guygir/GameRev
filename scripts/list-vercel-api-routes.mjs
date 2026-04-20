@@ -51,6 +51,7 @@ const logical = [
   'POST /api/backloggd-suggestions',
   'POST /api/review-outline-from-summary',
   'POST /api/review-summary-suggest',
+  'POST /api/review-pros-cons-tidy',
   'POST /api/sample-cover-accent',
   'GET  /api/steam-visibility',
   'POST /api/notify-comment',

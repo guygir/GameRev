@@ -1,6 +1,8 @@
 import {
+  darkRadarFromGrayLevel,
   darkRadarFromHue,
   DEFAULT_DARK_REVIEW_ACCENT_HUE,
+  lightRadarFromGrayLevel,
   lightRadarFromHue,
 } from './reviewDarkAccent'
 
@@ -18,6 +20,8 @@ export type ReviewThemeOptions = {
   accentHue?: number
   /** @deprecated Prefer `accentHue` (same value). */
   darkAccentHue?: number
+  /** 0–100: achromatic accent (grayscale); takes precedence over hue when set. */
+  accentGrayLevel?: number | null
 }
 
 /** Single font system: Fraunces (display) + DM Sans (body). */
@@ -213,8 +217,40 @@ function resolvedAccentHue(opts?: ReviewThemeOptions): number {
   return DEFAULT_DARK_REVIEW_ACCENT_HUE
 }
 
+function resolvedAccentGrayLevel(opts?: ReviewThemeOptions): number | null {
+  const v = opts?.accentGrayLevel
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null
+  return Math.min(100, Math.max(0, Math.round(v)))
+}
+
 /** Pack 1: light (catalog default = brand purple) or light review (per-game accent); editorial dark. */
 export function getReviewTheme(mode: ReviewMode, opts?: ReviewThemeOptions): ReviewTheme {
+  const gray = resolvedAccentGrayLevel(opts)
+  if (gray != null) {
+    if (mode === 'light') {
+      const t = lightEditorial()
+      return {
+        mode: 'light',
+        cover: 'light',
+        useGrain: false,
+        ambiance: 'none',
+        shell: 'relative min-h-[100dvh] overflow-hidden bg-[#f4f4f5] text-zinc-900',
+        ...t,
+        radar: lightRadarFromGrayLevel(gray),
+      }
+    }
+    const t = darkEditorial()
+    return {
+      mode: 'dark',
+      cover: 'anthropic',
+      useGrain: true,
+      ambiance: 'anthropic',
+      shell: 'grain-bg relative min-h-[100dvh] overflow-hidden bg-[#120d0a] text-[#f4e9d8]',
+      ...t,
+      radar: darkRadarFromGrayLevel(gray),
+    }
+  }
+
   if (mode === 'light') {
     const hasAccent = opts?.accentHue != null || opts?.darkAccentHue != null
     if (hasAccent) {

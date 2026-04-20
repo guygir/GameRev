@@ -44,6 +44,8 @@ export type DarkAccentSource = {
   accentHue?: number | null
   /** Legacy DB `accent_preset` (0–4) when `accent_hue` is unset. */
   accentPreset?: number | null
+  /** DB `accent_gray_level` (0–100): achromatic accent; when set, hue is ignored for theming. */
+  accentGrayLevel?: number | null
 }
 
 function normalizeStoredHue(v: unknown): number | null {
@@ -167,6 +169,88 @@ export function homeCatalogCardCssVars(hue: number, surface: HomeCatalogSurface)
   } as CSSProperties
 }
 
+function clampGrayLevel(level: number): number {
+  return Math.min(100, Math.max(0, Math.round(level)))
+}
+
+/** Dark review shell: accent tokens are neutral (saturation 0). `level` 0 = darker, 100 = lighter. */
+export function reviewDarkGrayscaleCssVars(level: number): CSSProperties {
+  const t = clampGrayLevel(level) / 100
+  const hi = Math.round(72 + t * 22)
+  const mid = Math.round(48 + t * 28)
+  const low = Math.round(26 + t * 14)
+  return {
+    '--review-accent': `hsl(0 0% ${hi}%)`,
+    '--review-accent-bright': `hsl(0 0% ${Math.min(94, hi + 14)}%)`,
+    '--review-accent-soft': `hsl(0 0% ${mid}%)`,
+    '--review-accent-glow': `hsl(0 0% ${mid}% / 0.14)`,
+    '--review-accent-glow-2': `hsl(0 0% ${low}% / 0.2)`,
+    '--review-accent-border': `hsl(0 0% ${mid + 6}% / 0.42)`,
+    '--review-accent-surface': `hsl(0 0% ${low}% / 0.42)`,
+  } as CSSProperties
+}
+
+/** Light review shell: grayscale accent variables. */
+export function reviewLightGrayscaleCssVars(level: number): CSSProperties {
+  const t = clampGrayLevel(level) / 100
+  const core = Math.round(28 + t * 32)
+  const soft = Math.round(52 + t * 20)
+  return {
+    '--review-accent': `hsl(0 0% ${core}%)`,
+    '--review-accent-bright': `hsl(0 0% ${Math.max(12, core - 6)}%)`,
+    '--review-accent-soft': `hsl(0 0% ${soft}%)`,
+    '--review-accent-glow': `hsl(0 0% ${soft}% / 0.18)`,
+    '--review-accent-glow-2': `hsl(0 0% 70% / 0.12)`,
+    '--review-accent-border': `hsl(0 0% ${88 - t * 8}% / 0.95)`,
+    '--review-accent-surface': `hsl(0 0% 98% / 0.95)`,
+  } as CSSProperties
+}
+
+/** Catalog cards for games saved with grayscale accent. */
+export function homeCatalogGrayscaleCardCssVars(level: number, surface: HomeCatalogSurface): CSSProperties {
+  const t = clampGrayLevel(level) / 100
+  if (surface === 'dark') {
+    const border = Math.round(34 + t * 18)
+    const surf = Math.round(14 + t * 10)
+    return {
+      '--home-catalog-border': `hsl(0 0% ${border}% / 0.4)`,
+      '--home-catalog-border-hover': `hsl(0 0% ${border + 12}% / 0.55)`,
+      '--home-catalog-surface': `hsl(0 0% ${surf}% / 0.5)`,
+      '--home-catalog-surface-hover': `hsl(0 0% ${surf + 3}% / 0.58)`,
+      '--home-catalog-thumb-border': `hsl(0 0% ${border - 2}% / 0.35)`,
+      '--home-catalog-title-hover': `hsl(0 0% ${88 + t * 6}%)`,
+      '--home-catalog-subtitle': `hsl(0 0% ${72 + t * 8}% / 0.85)`,
+      '--home-catalog-cta': `hsl(0 0% ${82 + t * 6}% / 0.92)`,
+      '--home-catalog-glow': `hsl(0 0% 50% / 0.22)`,
+    } as CSSProperties
+  }
+  return {
+    '--home-catalog-border': `hsl(0 0% ${86 - t * 6}% / 1)`,
+    '--home-catalog-border-hover': `hsl(0 0% ${72 - t * 8}% / 0.55)`,
+    '--home-catalog-surface': '#ffffff',
+    '--home-catalog-surface-hover': '#ffffff',
+    '--home-catalog-thumb-border': `hsl(0 0% ${90 - t * 4}% / 1)`,
+    '--home-catalog-title-hover': `hsl(0 0% ${28 + t * 10}%)`,
+    '--home-catalog-subtitle': `hsl(0 0% ${42 + t * 6}% / 0.9)`,
+    '--home-catalog-cta': `hsl(0 0% ${32 + t * 8}%)`,
+    '--home-catalog-glow': `hsl(0 0% 55% / 0.2)`,
+  } as CSSProperties
+}
+
+/** Home / review list: chromatic card vars, or grayscale when `accentGrayLevel` is set on the row. */
+export function resolveCatalogCardCssVars(
+  slug: string,
+  source: DarkAccentSource | null | undefined,
+  surface: HomeCatalogSurface,
+): CSSProperties {
+  const gl = source?.accentGrayLevel
+  if (typeof gl === 'number' && Number.isFinite(gl)) {
+    return homeCatalogGrayscaleCardCssVars(gl, surface)
+  }
+  const hue = resolveDarkAccentHue(slug, source)
+  return homeCatalogCardCssVars(hue, surface)
+}
+
 export function darkRadarFromHue(hue: number): {
   fill: string
   stroke: string
@@ -193,6 +277,38 @@ export function lightRadarFromHue(hue: number): {
   return {
     fill: hslToHex(h, 52, 48),
     stroke: hslToHex(h, 48, 64),
+    grid: '#94a3b8',
+    label: '#64748b',
+  }
+}
+
+export function darkRadarFromGrayLevel(level: number): {
+  fill: string
+  stroke: string
+  grid: string
+  label: string
+} {
+  const t = clampGrayLevel(level) / 100
+  const L = Math.round(46 + t * 22)
+  return {
+    fill: hslToHex(0, 0, L),
+    stroke: hslToHex(0, 0, Math.min(88, L + 18)),
+    grid: '#a8a29e',
+    label: '#78716c',
+  }
+}
+
+export function lightRadarFromGrayLevel(level: number): {
+  fill: string
+  stroke: string
+  grid: string
+  label: string
+} {
+  const t = clampGrayLevel(level) / 100
+  const L = Math.round(38 + t * 18)
+  return {
+    fill: hslToHex(0, 0, L),
+    stroke: hslToHex(0, 0, Math.min(72, L + 12)),
     grid: '#94a3b8',
     label: '#64748b',
   }

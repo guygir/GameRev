@@ -6,7 +6,9 @@ import { getSupabaseBrowser } from '../lib/supabaseClient'
 import {
   DEFAULT_DARK_REVIEW_ACCENT_HUE,
   reviewDarkAccentCssVars,
+  reviewDarkGrayscaleCssVars,
   reviewLightAccentCssVars,
+  reviewLightGrayscaleCssVars,
 } from '../review/reviewDarkAccent'
 
 type CommentsSectionProps = {
@@ -15,11 +17,25 @@ type CommentsSectionProps = {
   initialComments: CommentRow[]
   /** Dark mode: match review page accent (same hue as game slug). */
   darkAccentHue?: number
+  /** When set, match grayscale review accent. */
+  accentGrayLevel?: number | null
 }
 
-export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }: CommentsSectionProps) {
+export function CommentsSection({
+  gameId,
+  mode,
+  initialComments,
+  darkAccentHue,
+  accentGrayLevel,
+}: CommentsSectionProps) {
+  const isGrayscale = accentGrayLevel != null && Number.isFinite(accentGrayLevel)
   const accentHue = darkAccentHue ?? DEFAULT_DARK_REVIEW_ACCENT_HUE
-  const theme = useMemo(() => getReviewTheme(mode, { accentHue }), [mode, accentHue])
+  const theme = useMemo(() => {
+    if (isGrayscale) {
+      return getReviewTheme(mode, { accentGrayLevel })
+    }
+    return getReviewTheme(mode, { accentHue })
+  }, [mode, accentHue, isGrayscale, accentGrayLevel])
   const [comments, setComments] = useState<CommentRow[]>(initialComments)
   const [body, setBody] = useState('')
   const [authorName, setAuthorName] = useState('')
@@ -76,7 +92,15 @@ export function CommentsSection({ gameId, mode, initialComments, darkAccentHue }
         theme.fontBody,
         isDark ? 'grain-bg bg-[#120d0a]' : 'bg-[#f4f4f5]',
       )}
-      style={isDark ? reviewDarkAccentCssVars(accentHue) : reviewLightAccentCssVars(accentHue)}
+      style={
+        isGrayscale
+          ? isDark
+            ? reviewDarkGrayscaleCssVars(accentGrayLevel!)
+            : reviewLightGrayscaleCssVars(accentGrayLevel!)
+          : isDark
+            ? reviewDarkAccentCssVars(accentHue)
+            : reviewLightAccentCssVars(accentHue)
+      }
     >
       <div className="mx-auto w-full max-w-6xl px-4 md:px-8">
         <div

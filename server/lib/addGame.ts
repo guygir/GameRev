@@ -10,7 +10,7 @@ import {
   optionalSteamReviewCount,
   optionalVisibilityScore01,
   parseStats,
-  resolveAccentHueFromBody,
+  resolveAccentRowFromBody,
   resolvePlayIfLiked,
   type AddGameBody,
 } from './gamePayload.js'
@@ -70,8 +70,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   const stats = parseStats(b.stats)
   if (!stats) return { ok: false, status: 400, error: 'Invalid stats (need 0–100 per axis)' }
 
-  const resolvedAccent = resolveAccentHueFromBody(b)
-  const accent_hue = resolvedAccent === undefined ? null : resolvedAccent
+  const { accent_hue, accent_gray_level } = resolveAccentRowFromBody(b)
 
   const platforms = normalizeStringList(b.platforms, 24, 48)
   const genres = normalizeStringList(b.genres, 24, 80)
@@ -146,6 +145,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
       summary,
       play_if_liked,
       accent_hue,
+      accent_gray_level,
       accent_preset: null,
       catalog_rank: catalogRank,
       ...(steam_app_id != null &&
