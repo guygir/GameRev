@@ -46,8 +46,33 @@ function shortenGeminiErrorBody(raw: string): string {
   return slice
 }
 
+/** Longer than OpenAI: Gemini occasionally queues; short timeouts look like flaky “empty” failures. */
+const GEMINI_GENERATE_TIMEOUT_MS = 90_000
+
+function geminiEmptyOutputHint(json: unknown): string {
+  if (json == null || typeof json !== 'object') return 'response not a JSON object'
+  const j = json as Record<string, unknown>
+  const pf = j.promptFeedback
+  if (pf && typeof pf === 'object') {
+    const br = (pf as Record<string, unknown>).blockReason
+    if (typeof br === 'string' && br.trim()) return `promptFeedback.blockReason=${br}`
+  }
+  const candidates = j.candidates
+  if (!Array.isArray(candidates) || candidates.length === 0) return 'candidates missing or empty'
+  const c0 = candidates[0]
+  if (c0 && typeof c0 === 'object') {
+    const fr = (c0 as Record<string, unknown>).finishReason
+    if (typeof fr === 'string' && fr.trim()) return `finishReason=${fr}`
+  }
+  return 'first candidate has no text part'
+}
+
+function formatGeminiPerModelReport(lines: string[]): string {
+  return lines.map((l) => `• ${l}`).join('\n')
+}
+
 /**
- * Order: try newer first; older 1.5 Flash last when 2.x is overloaded.
+ * Order: try newer Flash / Flash-Lite first; `gemini-flash-latest` last as an alias fallback.
  * UI may pick a whitelisted free-tier model first; otherwise `GEMINI_MODEL` prepends the default list.
  * @see https://ai.google.dev/pricing
  * @see https://ai.google.dev/gemini-api/docs/rate-limits
@@ -173,56 +198,106 @@ async function refineGemini(
   models: string[],
   input: LlmRefineInput,
 ): Promise<LlmRefineOutput | null> {
-  let lastErrorBody = ''
   const maxAttemptsPerModel = 3
+  const perModelLines: string[] = []
 
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
+    const attemptNotes: string[] = []
 
     attempts: for (let attempt = 0; attempt < maxAttemptsPerModel; attempt++) {
       const ac = new AbortController()
-      const t = setTimeout(() => ac.abort(), 45_000)
+      const t = setTimeout(() => ac.abort(), GEMINI_GENERATE_TIMEOUT_MS)
       try {
-        const res = await fetch(url, {
-          method: 'POST',
-          signal: ac.signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: buildPrompt(input) }] }],
-            generationConfig: {
-              temperature: 0.35,
-              maxOutputTokens: 2048,
-              responseMimeType: 'application/json',
-            },
-          }),
-        })
+        let res: Response
+        try {
+          res = await fetch(url, {
+            method: 'POST',
+            signal: ac.signal,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: buildPrompt(input) }] }],
+              generationConfig: {
+                temperature: 0.35,
+                maxOutputTokens: 2048,
+                responseMimeType: 'application/json',
+              },
+            }),
+          })
+        } catch (err) {
+          const name = err instanceof Error ? err.name : 'Error'
+          const msg = err instanceof Error ? err.message : String(err)
+          if (name === 'AbortError') {
+            attemptNotes.push(
+              `request aborted after ${GEMINI_GENERATE_TIMEOUT_MS}ms (client timeout; not necessarily Google’s deadline)`,
+            )
+          } else {
+            attemptNotes.push(`fetch error (${name}): ${msg}`)
+          }
+          break attempts
+        }
+
         const rawText = await res.text()
         if (!res.ok) {
-          lastErrorBody = shortenGeminiErrorBody(rawText)
-          if (res.status === 404) break attempts
+          const body = shortenGeminiErrorBody(rawText)
+          const att = attempt > 0 ? `attempt ${attempt + 1}: ` : ''
+          const line = `${att}HTTP ${res.status}: ${body}`
+          if (res.status === 404) {
+            attemptNotes.push(line)
+            break attempts
+          }
           if (GEMINI_TRANSIENT_HTTP.has(res.status) && attempt < maxAttemptsPerModel - 1) {
             await sleep(700 * 2 ** attempt + Math.floor(Math.random() * 250))
             continue attempts
           }
-          if (GEMINI_TRANSIENT_HTTP.has(res.status)) break attempts
-          throw new Error(`Gemini: ${lastErrorBody}`)
+          if (GEMINI_TRANSIENT_HTTP.has(res.status)) {
+            attemptNotes.push(`${line} (${maxAttemptsPerModel} HTTP attempts)`)
+            break attempts
+          }
+          attemptNotes.push(line)
+          throw new Error(
+            `Gemini: ${line}\n${formatGeminiPerModelReport([...perModelLines, `${model}: ${attemptNotes.join(' | ')}`])}`,
+          )
         }
-        const json = JSON.parse(rawText) as {
+
+        let json: unknown
+        try {
+          json = JSON.parse(rawText) as unknown
+        } catch (e) {
+          const m = e instanceof Error ? e.message : String(e)
+          attemptNotes.push(`HTTP 200 but body is not JSON: ${m}`)
+          break attempts
+        }
+
+        const typed = json as {
           candidates?: { content?: { parts?: { text?: string }[] } }[]
         }
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text
-        if (!text) break attempts
+        const text = typed.candidates?.[0]?.content?.parts?.[0]?.text
+        if (!text) {
+          attemptNotes.push(`HTTP 200 but no model text (${geminiEmptyOutputHint(json)})`)
+          break attempts
+        }
         const parsed = parseJsonObject(text)
         if (parsed) return parsed
+        const preview = text.replace(/\s+/g, ' ').slice(0, 160)
+        attemptNotes.push(
+          `HTTP 200 but outline JSON invalid or incomplete (snippet: ${preview}${text.length > 160 ? '…' : ''})`,
+        )
+        break attempts
       } finally {
         clearTimeout(t)
       }
     }
+
+    perModelLines.push(
+      attemptNotes.length > 0
+        ? `${model}: ${attemptNotes.join(' | ')}`
+        : `${model}: stopped with no error detail (unexpected)`,
+    )
   }
+
   throw new Error(
-    lastErrorBody
-      ? `Gemini: ${lastErrorBody}`
-      : 'Gemini: no model returned usable JSON (tried multiple models).',
+    `Gemini: no model returned usable JSON.\n${formatGeminiPerModelReport(perModelLines)}`,
   )
 }
 
