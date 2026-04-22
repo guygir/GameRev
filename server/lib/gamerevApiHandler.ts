@@ -10,7 +10,7 @@ import { syncReaderCommentToGithub } from './githubGameComments.js'
 import { deleteReaderCommentFromBody } from './deleteReaderComment.js'
 import { fetchSteamVisibility } from './steamPopularity.js'
 import { runEditorLookupBundle } from './editorLookupBundle.js'
-import { generateReviewCapsuleSummary } from './reviewSummaryLlm.js'
+import { adjustReviewSummaryEnglishLevel, generateReviewCapsuleSummary } from './reviewSummaryLlm.js'
 import { generateOutlineFromSummary } from './outlineFromSummaryLlm.js'
 import { tidyProsConsLines } from './prosConsTidyLlm.js'
 import type { ServerProcessEnv } from './serverEnv.js'
@@ -215,6 +215,30 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         status: 200,
         body: { summary: out.summary, usedHeuristicFallback: out.usedHeuristicFallback },
       }
+    }
+
+    if (method === 'POST' && route === 'review-summary-english-level') {
+      const body = (jsonBody ?? {}) as {
+        direction?: unknown
+        paragraph?: unknown
+        gameName?: unknown
+        geminiModel?: unknown
+      }
+      const direction = body.direction === 'up' || body.direction === 'down' ? body.direction : null
+      if (!direction) {
+        return { status: 422, body: { error: 'Missing or invalid direction (use "up" or "down").' } }
+      }
+      const paragraph = typeof body.paragraph === 'string' ? body.paragraph : ''
+      const gameName = typeof body.gameName === 'string' ? body.gameName : ''
+      const geminiModel =
+        typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
+      const out = await adjustReviewSummaryEnglishLevel(
+        env,
+        { direction, paragraph, gameName: gameName.trim() ? gameName : undefined },
+        { geminiModel },
+      )
+      if (out.ok === false) return { status: 422, body: { error: out.error } }
+      return { status: 200, body: { summary: out.summary } }
     }
 
     if (method === 'POST' && route === 'sample-cover-accent') {

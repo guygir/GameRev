@@ -30,6 +30,11 @@ function clip(s: string, max: number): string {
   return `${t.slice(0, max - 1)}…`
 }
 
+type SummaryJsonCallOpts = {
+  /** OpenAI `max_tokens` / Gemini `maxOutputTokens` for the JSON summary field. */
+  maxOutTokens?: number
+}
+
 function buildSummaryPrompt(gameName: string, pros: string, cons: string): string {
   return `You help a solo game-review editor write a short capsule for the public review page.
 
@@ -64,7 +69,12 @@ function parseSummaryJson(raw: string): string | null {
   }
 }
 
-async function summarizeOpenAi(key: string, prompt: string): Promise<string | null> {
+async function summarizeOpenAi(
+  key: string,
+  prompt: string,
+  callOpts?: SummaryJsonCallOpts,
+): Promise<string | null> {
+  const max_tokens = callOpts?.maxOutTokens ?? 900
   const ac = new AbortController()
   const t = setTimeout(() => ac.abort(), 45_000)
   try {
@@ -78,7 +88,7 @@ async function summarizeOpenAi(key: string, prompt: string): Promise<string | nu
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         temperature: 0.35,
-        max_tokens: 900,
+        max_tokens,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: 'You output only compact JSON for a review editor tool.' },
@@ -106,9 +116,15 @@ async function summarizeOpenAi(key: string, prompt: string): Promise<string | nu
   }
 }
 
-async function summarizeGemini(key: string, models: string[], prompt: string): Promise<string | null> {
+async function summarizeGemini(
+  key: string,
+  models: string[],
+  prompt: string,
+  callOpts?: SummaryJsonCallOpts,
+): Promise<string | null> {
   let lastErrorBody = ''
   const maxAttemptsPerModel = 3
+  const maxOutputTokens = callOpts?.maxOutTokens ?? 1024
 
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
@@ -125,7 +141,7 @@ async function summarizeGemini(key: string, models: string[], prompt: string): P
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.35,
-              maxOutputTokens: 1024,
+              maxOutputTokens,
               responseMimeType: 'application/json',
             },
           }),
@@ -243,4 +259,83 @@ export async function generateReviewCapsuleSummary(
   }
 
   return fallback()
+}
+
+export type ReviewSummaryEnglishAdjustInput = {
+  /** Slightly richer / more advanced wording vs slightly plainer / easier. */
+  direction: 'up' | 'down'
+  paragraph: string
+  gameName?: string
+}
+
+function buildEnglishLevelPrompt(direction: 'up' | 'down', gameName: string, paragraph: string): string {
+  const ctx =
+    gameName.trim().length >= 2
+      ? `This capsule is for the game ${JSON.stringify(gameName.trim())} (tone only; do not output a title line).\n\n`
+      : ''
+  const tweak =
+    direction === 'up'
+      ? `Rewrite the paragraph so the English is slightly more advanced: a bit richer vocabulary and more varied sentence rhythm, still sounding like a skimmable game-review capsule. Stay clear; avoid purple prose or jargon for its own sake. Do not add spoilers or new factual claims. Keep roughly the same length (within about ±25%).`
+      : `Rewrite the paragraph so the English is slightly simpler: clearer, plainer wording and somewhat shorter sentences where it still flows. Keep an adult editorial tone—do not sound childish. Do not change meaning, add spoilers, or new factual claims. Keep roughly the same length (within about ±25%).`
+  return `${ctx}${tweak}
+
+Current paragraph:
+${JSON.stringify(clip(paragraph, 11_000))}
+
+Return ONLY valid JSON with exactly this shape:
+{"summary":"..."}`
+}
+
+/**
+ * Nudge the capsule paragraph up or down one notch in reading level (OpenAI if configured, else Gemini). No heuristic fallback.
+ */
+export async function adjustReviewSummaryEnglishLevel(
+  env: ServerProcessEnv,
+  input: ReviewSummaryEnglishAdjustInput,
+  opts?: { geminiModel?: string | null },
+): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
+  const direction = input.direction
+  if (direction !== 'up' && direction !== 'down') {
+    return { ok: false, error: 'direction must be "up" or "down".' }
+  }
+  const paragraph = input.paragraph.trim()
+  if (paragraph.length < 30) {
+    return { ok: false, error: 'Add more summary text first (at least ~30 characters).' }
+  }
+  const gameName = (input.gameName ?? '').trim()
+  const prompt = buildEnglishLevelPrompt(direction, gameName, paragraph)
+  const openai = (env.OPENAI_API_KEY ?? '').trim()
+  const gemini = (env.GEMINI_API_KEY ?? '').trim()
+  const tokenOpts: SummaryJsonCallOpts = { maxOutTokens: 2048 }
+
+  if (!openai && !gemini) {
+    return { ok: false, error: 'No OPENAI_API_KEY or GEMINI_API_KEY on the server.' }
+  }
+
+  if (openai) {
+    try {
+      const out = await summarizeOpenAi(openai, prompt, tokenOpts)
+      if (out) return { ok: true, summary: out }
+    } catch (e) {
+      if (!gemini) {
+        return { ok: false, error: e instanceof Error ? e.message : 'OpenAI request failed.' }
+      }
+    }
+  }
+
+  if (gemini) {
+    try {
+      const out = await summarizeGemini(
+        gemini,
+        geminiModelsToTry(env, opts?.geminiModel ?? null),
+        prompt,
+        tokenOpts,
+      )
+      if (out) return { ok: true, summary: out }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Gemini request failed.' }
+    }
+  }
+
+  return { ok: false, error: 'Cloud models did not return a revised paragraph.' }
 }

@@ -229,6 +229,8 @@ export function AddGamePage() {
   const [summarySuggestErr, setSummarySuggestErr] = useState<string | null>(null)
   /** Last successful summary request used heuristic text, not cloud LLM output. */
   const [summaryNotFromCloudAi, setSummaryNotFromCloudAi] = useState(false)
+  const [summaryEnglishBusy, setSummaryEnglishBusy] = useState(false)
+  const [summaryEnglishErr, setSummaryEnglishErr] = useState<string | null>(null)
   const [outlineFromSummaryBusy, setOutlineFromSummaryBusy] = useState(false)
   const [outlineFromSummaryErr, setOutlineFromSummaryErr] = useState<string | null>(null)
   /** Last successful outline-from-summary used heuristic data, not cloud LLM output. */
@@ -306,6 +308,8 @@ export function AddGamePage() {
     setProsText('')
     setConsText('')
     setSummaryText('')
+    setSummaryEnglishErr(null)
+    setSummaryEnglishBusy(false)
     setOutlineFromSummaryErr(null)
     setOutlineFromSummaryBusy(false)
     setSteamAppId(null)
@@ -739,6 +743,7 @@ export function AddGamePage() {
     }
     setSummarySuggestBusy(true)
     setSummarySuggestErr(null)
+    setSummaryEnglishErr(null)
     setSummaryNotFromCloudAi(false)
     try {
       const res = await fetch('/api/review-summary-suggest', {
@@ -764,6 +769,42 @@ export function AddGamePage() {
     }
   }, [name, prosText, consText, cloudLlmGeminiModel])
 
+  const runAdjustSummaryEnglish = useCallback(
+    async (direction: 'up' | 'down') => {
+      const trimmed = summaryText.trim()
+      if (trimmed.length < 30) {
+        setSummaryEnglishErr('Add more summary text first (at least ~30 characters).')
+        return
+      }
+      setSummaryEnglishBusy(true)
+      setSummaryEnglishErr(null)
+      setSummarySuggestErr(null)
+      try {
+        const res = await fetch('/api/review-summary-english-level', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            direction,
+            paragraph: trimmed,
+            ...(name.trim().length >= 2 ? { gameName: name.trim() } : {}),
+            ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+          }),
+        })
+        const json = (await res.json()) as { summary?: string; error?: string }
+        if (!res.ok) throw new Error(json.error ?? 'English level adjustment failed')
+        const s = typeof json.summary === 'string' ? json.summary.trim() : ''
+        if (!s) throw new Error('Empty summary from server')
+        setSummaryText(s)
+        setSummaryNotFromCloudAi(false)
+      } catch (e) {
+        setSummaryEnglishErr(e instanceof Error ? e.message : 'English level adjustment failed')
+      } finally {
+        setSummaryEnglishBusy(false)
+      }
+    },
+    [summaryText, name, cloudLlmGeminiModel],
+  )
+
   const runOutlineFromSummary = useCallback(async () => {
     const gameName = name.trim()
     if (gameName.length < 2) {
@@ -777,6 +818,7 @@ export function AddGamePage() {
     }
     setOutlineFromSummaryBusy(true)
     setOutlineFromSummaryErr(null)
+    setSummaryEnglishErr(null)
     setOutlineNotFromCloudAi(false)
     try {
       const res = await fetch('/api/review-outline-from-summary', {
@@ -2524,21 +2566,45 @@ export function AddGamePage() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={summarySuggestBusy || outlineFromSummaryBusy}
+              disabled={summarySuggestBusy || outlineFromSummaryBusy || summaryEnglishBusy}
               onClick={() => void runReviewSummarySuggest()}
               className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition hover:border-amber-500/50 hover:bg-zinc-800 disabled:opacity-50"
             >
               {summarySuggestBusy ? 'Generating…' : 'Suggest paragraph'}
             </button>
+            <span className="text-xs font-medium text-zinc-500">English</span>
+            <span className="select-none text-zinc-600">:</span>
+            <button
+              type="button"
+              disabled={summarySuggestBusy || outlineFromSummaryBusy || summaryEnglishBusy}
+              onClick={() => void runAdjustSummaryEnglish('down')}
+              title="Slightly simpler English (easier to read)"
+              aria-label="Slightly simpler English"
+              className="min-w-[2rem] rounded-md border border-zinc-600 bg-zinc-900 px-2 py-1 text-sm font-semibold leading-none text-zinc-100 transition hover:border-sky-500/50 hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {summaryEnglishBusy ? '…' : '↓'}
+            </button>
+            <button
+              type="button"
+              disabled={summarySuggestBusy || outlineFromSummaryBusy || summaryEnglishBusy}
+              onClick={() => void runAdjustSummaryEnglish('up')}
+              title="Slightly richer English (more advanced)"
+              aria-label="Slightly richer English"
+              className="min-w-[2rem] rounded-md border border-zinc-600 bg-zinc-900 px-2 py-1 text-sm font-semibold leading-none text-zinc-100 transition hover:border-sky-500/50 hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {summaryEnglishBusy ? '…' : '↑'}
+            </button>
             <span className="text-[11px] text-zinc-500">
               Uses game name + Pros + Cons; replaces this box on success. Server tries cloud LLM first; if that fails, a
-              heuristic paragraph is used and flagged in red. Gemini order: dropdown in the Backloggd card above.
+              heuristic paragraph is used and flagged in red. Gemini order: dropdown in the Backloggd card above.{' '}
+              <strong className="text-zinc-400">English ↑↓</strong> nudges the current summary only (cloud LLM, same
+              model order).
             </span>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={outlineFromSummaryBusy || summarySuggestBusy}
+              disabled={outlineFromSummaryBusy || summarySuggestBusy || summaryEnglishBusy}
               onClick={() => void runOutlineFromSummary()}
               className="rounded-lg border border-violet-600/60 bg-violet-950/50 px-3 py-1.5 text-xs font-semibold text-violet-100 transition hover:border-violet-500/70 hover:bg-violet-900/50 disabled:opacity-50"
             >
@@ -2552,6 +2618,7 @@ export function AddGamePage() {
             </span>
           </div>
           {summarySuggestErr ? <p className="text-xs text-rose-300">{summarySuggestErr}</p> : null}
+          {summaryEnglishErr ? <p className="text-xs text-rose-300">{summaryEnglishErr}</p> : null}
           {outlineFromSummaryErr ? <p className="text-xs text-rose-300">{outlineFromSummaryErr}</p> : null}
           {summaryNotFromCloudAi ? (
             <p className="mt-2 rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
