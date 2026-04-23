@@ -12,6 +12,9 @@ export type SteamVisibilityOk = {
   visibilityScore: number
 }
 
+/** One row from Steam store search (used for alternate listings). */
+export type SteamStoreHit = { appId: number; name: string }
+
 type SteamSearchItem = { id?: number; name?: string }
 
 function clamp01(n: number): number {
@@ -35,10 +38,14 @@ export function computeVisibilityScore(totalReviews: number, releaseYear: number
   return clamp01(s)
 }
 
-export async function fetchSteamVisibility(
+/**
+ * Raw Steam store search hits (same API the client uses for the first match).
+ * @param max maximum rows (default 15)
+ */
+export async function steamStoreSearchHits(
   query: string,
-  releaseYear: number | null,
-): Promise<SteamVisibilityOk | { error: string }> {
+  max = 15,
+): Promise<SteamStoreHit[] | { error: string }> {
   const q = query.trim()
   if (q.length < 2) return { error: 'Query too short.' }
   if (q.length > 120) return { error: 'Query too long.' }
@@ -48,15 +55,23 @@ export async function fetchSteamVisibility(
     headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
   })
   if (!searchRes.ok) return { error: `Steam search HTTP ${searchRes.status}` }
-  const searchJson = (await searchRes.json()) as { total?: number; items?: SteamSearchItem[] }
+  const searchJson = (await searchRes.json()) as { items?: SteamSearchItem[] }
   const items = Array.isArray(searchJson.items) ? searchJson.items : []
-  const first = items.find((it) => typeof it.id === 'number' && it.id > 0)
-  if (!first?.id) return { error: 'No Steam store match for that title.' }
+  const hits: SteamStoreHit[] = []
+  for (const it of items) {
+    if (typeof it.id !== 'number' || it.id <= 0) continue
+    const name = typeof it.name === 'string' && it.name.trim() ? it.name.trim() : `App ${it.id}`
+    hits.push({ appId: it.id, name })
+    if (hits.length >= max) break
+  }
+  if (!hits.length) return { error: 'No Steam store match for that title.' }
+  return hits
+}
 
-  const appId = first.id
-  const steamName = typeof first.name === 'string' ? first.name : q
-
-  const revUrl = `https://store.steampowered.com/appreviews/${appId}?json=1&filter=all&language=all&purchase_type=all`
+async function fetchSteamReviewTotal(appId: number): Promise<number | { error: string }> {
+  const id = Math.floor(appId)
+  if (!Number.isFinite(id) || id <= 0) return { error: 'Invalid Steam app id.' }
+  const revUrl = `https://store.steampowered.com/appreviews/${id}?json=1&filter=all&language=all&purchase_type=all`
   const revRes = await fetch(revUrl, {
     headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
   })
@@ -71,10 +86,58 @@ export async function fetchSteamVisibility(
       : typeof revJson.query_summary?.num_reviews === 'number'
         ? revJson.query_summary.num_reviews
         : 0
+  return total
+}
 
-  const visibilityScore = computeVisibilityScore(total, releaseYear)
+export type SteamVisibilityResolved = SteamVisibilityOk & {
+  /** Other Steam store hits for the same search (excludes the selected `appId`). */
+  alternateHits: SteamStoreHit[]
+}
 
-  return { appId, steamName, totalReviews: total, visibilityScore }
+export type SteamVisibilityOptions = {
+  /** When set, use this app from the search page if present; otherwise still resolve totals for this id. */
+  preferAppId?: number
+  /** Display name when `preferAppId` is not in the search list (e.g. manual pick). */
+  preferSteamName?: string
+}
+
+export async function fetchSteamVisibility(
+  query: string,
+  releaseYear: number | null,
+  opts?: SteamVisibilityOptions,
+): Promise<SteamVisibilityResolved | { error: string }> {
+  const q = query.trim()
+  if (q.length < 2) return { error: 'Query too short.' }
+  if (q.length > 120) return { error: 'Query too long.' }
+
+  const hitsRes = await steamStoreSearchHits(q, 15)
+  if (!Array.isArray(hitsRes)) return hitsRes
+
+  const preferId =
+    opts?.preferAppId != null && Number.isFinite(opts.preferAppId) ? Math.floor(opts.preferAppId) : null
+  let selected: SteamStoreHit | undefined
+  if (preferId != null && preferId > 0) {
+    selected = hitsRes.find((h) => h.appId === preferId)
+    if (!selected) {
+      const fallbackName = (opts?.preferSteamName ?? '').trim() || q || `App ${preferId}`
+      selected = { appId: preferId, name: fallbackName }
+    }
+  }
+  if (!selected) selected = hitsRes[0]!
+
+  const totalRes = await fetchSteamReviewTotal(selected.appId)
+  if (typeof totalRes !== 'number') return totalRes
+
+  const visibilityScore = computeVisibilityScore(totalRes, releaseYear)
+  const alternateHits = hitsRes.filter((h) => h.appId !== selected.appId).slice(0, 12)
+
+  return {
+    appId: selected.appId,
+    steamName: selected.name,
+    totalReviews: totalRes,
+    visibilityScore,
+    alternateHits,
+  }
 }
 
 /**

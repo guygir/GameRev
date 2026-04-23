@@ -8,7 +8,7 @@ import {
 import type { BackloggdSuggestionsResult } from './backloggdSuggestions.js'
 import { fetchIgdbGenreMatches } from './igdbGenres.js'
 import type { IgdbGenreMatch } from './igdbGenres.js'
-import { fetchSteamReviewBodies, fetchSteamVisibility } from './steamPopularity.js'
+import { fetchSteamReviewBodies, fetchSteamVisibility, type SteamStoreHit } from './steamPopularity.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 export type SteamReviewEditorSuggestions = {
@@ -33,6 +33,7 @@ export type EditorLookupBundleResponse = {
         totalReviews: number
         visibilityScore: number
         storeUrl: string
+        alternateHits: SteamStoreHit[]
         suggestions: SteamReviewEditorSuggestions | null
         suggestionsError?: string
       }
@@ -90,6 +91,11 @@ export async function runEditorLookupBundle(
     query: string
     releaseLabel?: string
     geminiModel?: string
+    /** Pick this Steam app instead of the first store search hit (same search query). */
+    steamPreferAppId?: number
+    steamPreferSteamName?: string
+    /** Pick this Backloggd slug from the first search page (same query). */
+    backloggdSlug?: string
   },
 ): Promise<EditorLookupBundleResponse> {
   const query = input.query.trim()
@@ -117,8 +123,12 @@ export async function runEditorLookupBundle(
     }
   })()
 
-  const backloggdP = fetchBackloggdSuggestions(query, { env, geminiModel })
-  const steamVisP = fetchSteamVisibility(query, releaseYear)
+  const backloggdSlug = input.backloggdSlug?.trim() || undefined
+  const backloggdP = fetchBackloggdSuggestions(query, { env, geminiModel, backloggdSlug })
+  const steamVisP = fetchSteamVisibility(query, releaseYear, {
+    preferAppId: input.steamPreferAppId,
+    preferSteamName: input.steamPreferSteamName?.trim() || undefined,
+  })
 
   const [igdb, backloggd, steamVis] = await Promise.all([igdbP, backloggdP, steamVisP])
 
@@ -160,6 +170,7 @@ export async function runEditorLookupBundle(
       totalReviews: steamVis.totalReviews,
       visibilityScore: steamVis.visibilityScore,
       storeUrl: `https://store.steampowered.com/app/${steamVis.appId}/`,
+      alternateHits: steamVis.alternateHits,
       suggestions,
       ...(suggestionsError ? { suggestionsError } : {}),
     }

@@ -84,6 +84,7 @@ type BackloggdSuggestPayload = {
   backloggdGameUrl: string
   backloggdTitle: string
   backloggdSlug: string
+  alternateBackloggdGames: { slug: string; title: string; url: string }[]
   reviewSnippets: string[]
   suggestedTags: string[]
   suggestedPlayIfLiked: string[]
@@ -118,6 +119,7 @@ type EditorLookupBundleJson = {
         totalReviews: number
         visibilityScore: number
         storeUrl: string
+        alternateHits: { appId: number; name: string }[]
         suggestions: {
           reviewSnippets: string[]
           suggestedTags: string[]
@@ -130,6 +132,12 @@ type EditorLookupBundleJson = {
         suggestionsError?: string
       }
     | { ok: false; error: string }
+}
+
+type EditorLookupBundleOverrides = {
+  steamPreferAppId?: number
+  steamPreferSteamName?: string
+  backloggdSlug?: string
 }
 
 function appendUniqueLines(current: string, lines: string[]): string {
@@ -255,6 +263,8 @@ export function AddGamePage() {
   const [steamBusy, setSteamBusy] = useState(false)
   const [steamErr, setSteamErr] = useState<string | null>(null)
   const [steamReviewSuggest, setSteamReviewSuggest] = useState<SteamReviewSuggestState | null>(null)
+  /** Other Steam store rows for the last name-based search (GET or bundle). */
+  const [steamAlternateHits, setSteamAlternateHits] = useState<{ appId: number; name: string }[]>([])
   const [editorBundleBusy, setEditorBundleBusy] = useState(false)
   const [editorBundleErr, setEditorBundleErr] = useState<string | null>(null)
 
@@ -320,6 +330,7 @@ export function AddGamePage() {
     setSteamBusy(false)
     setSteamErr(null)
     setSteamReviewSuggest(null)
+    setSteamAlternateHits([])
     setEditorBundleBusy(false)
     setEditorBundleErr(null)
     setSubmitStatus(null)
@@ -634,15 +645,32 @@ export function AddGamePage() {
   const extSearchQ = useCallback(() => (extGenreQuery.trim() || name.trim()), [extGenreQuery, name])
 
   const rankSelectOptions = useMemo(() => {
-    if (loadReviewSlug) {
-      return rankedCatalogGames.map((g, i) => ({
-        value: i + 1,
-        label: `${i + 1}. ${g.name}${g.slug === loadReviewSlug ? ' (this review)' : ''}`,
-      }))
-    }
     if (rankedCatalogGames.length === 0) {
       return [{ value: 1, label: '1 — First review on the site' }]
     }
+
+    if (loadReviewSlug) {
+      const others = rankedCatalogGames.filter((g) => g.slug !== loadReviewSlug)
+      const n = rankedCatalogGames.length
+      const currentSlot = rankedCatalogGames.findIndex((g) => g.slug === loadReviewSlug) + 1
+      if (n === 1) {
+        return [{ value: 1, label: '1 — Only review (rank 1)' }]
+      }
+      const out: { value: number; label: string }[] = []
+      out.push({
+        value: 1,
+        label: `1 — First (before “${others[0]?.name ?? '—'}”)${currentSlot === 1 ? ' — current' : ''}`,
+      })
+      for (let pos = 2; pos <= n; pos++) {
+        const after = others[pos - 2]
+        out.push({
+          value: pos,
+          label: `${pos} — After “${after?.name ?? '—'}”${pos === currentSlot ? ' — current' : ''}`,
+        })
+      }
+      return out
+    }
+
     const out: { value: number; label: string }[] = []
     out.push({ value: 1, label: `1 — First (before “${rankedCatalogGames[0].name}”)` })
     for (let i = 1; i < rankedCatalogGames.length; i++) {
@@ -701,33 +729,42 @@ export function AddGamePage() {
     void runIgdbSearch(extSearchQ())
   }, [extSearchQ, runIgdbSearch])
 
-  const runBackloggdSuggestions = useCallback(async () => {
-    const q = name.trim()
-    if (q.length < 2) {
-      setBackloggdErr('Set the game name first (at least 2 characters).')
-      return
-    }
-    setBackloggdBusy(true)
-    setBackloggdErr(null)
-    try {
-      const res = await fetch('/api/backloggd-suggestions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: q,
-          ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
-        }),
-      })
-      const json = (await res.json()) as BackloggdSuggestPayload & { error?: string }
-      if (!res.ok) throw new Error(json.error ?? 'Backloggd request failed')
-      setBackloggdData(json)
-    } catch (e) {
-      setBackloggdData(null)
-      setBackloggdErr(e instanceof Error ? e.message : 'Backloggd request failed')
-    } finally {
-      setBackloggdBusy(false)
-    }
-  }, [name, cloudLlmGeminiModel])
+  const runBackloggdSuggestions = useCallback(
+    async (backloggdSlug?: string) => {
+      const q = name.trim()
+      if (q.length < 2) {
+        setBackloggdErr('Set the game name first (at least 2 characters).')
+        return
+      }
+      setBackloggdBusy(true)
+      setBackloggdErr(null)
+      try {
+        const res = await fetch('/api/backloggd-suggestions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: q,
+            ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+            ...(backloggdSlug ? { backloggdSlug } : {}),
+          }),
+        })
+        const json = (await res.json()) as BackloggdSuggestPayload & { error?: string }
+        if (!res.ok) throw new Error(json.error ?? 'Backloggd request failed')
+        setBackloggdData({
+          ...json,
+          alternateBackloggdGames: Array.isArray(json.alternateBackloggdGames)
+            ? json.alternateBackloggdGames
+            : [],
+        })
+      } catch (e) {
+        setBackloggdData(null)
+        setBackloggdErr(e instanceof Error ? e.message : 'Backloggd request failed')
+      } finally {
+        setBackloggdBusy(false)
+      }
+    },
+    [name, cloudLlmGeminiModel],
+  )
 
   const runReviewSummarySuggest = useCallback(async () => {
     const gameName = name.trim()
@@ -1065,52 +1102,62 @@ export function AddGamePage() {
     setSteamResolvedName(null)
     setSteamErr(null)
     setSteamReviewSuggest(null)
+    setSteamAlternateHits([])
   }, [])
 
-  const fetchSteamSnapshot = useCallback(async () => {
-    const q = name.trim()
-    if (q.length < 2) {
-      setSteamErr('Enter at least two characters in the game name (used as the Steam search query).')
-      return
-    }
-    setSteamErr(null)
-    setSteamReviewSuggest(null)
-    setSteamBusy(true)
-    try {
-      const ry = parseReleaseYearFromLabel(releaseLabel.trim() || null)
-      const sp = new URLSearchParams({ q })
-      if (ry != null) sp.set('releaseYear', String(ry))
-      const res = await fetch(`/api/steam-visibility?${sp}`)
-      const json = (await res.json()) as {
-        appId?: number
-        steamName?: string
-        totalReviews?: number
-        visibilityScore?: number
-        error?: string
+  const fetchSteamSnapshot = useCallback(
+    async (opts?: { preferAppId?: number; preferSteamName?: string }) => {
+      const q = name.trim()
+      if (q.length < 2) {
+        setSteamErr('Enter at least two characters in the game name (used as the Steam search query).')
+        return
       }
-      if (!res.ok) throw new Error(json.error ?? 'Steam lookup failed')
-      if (
-        typeof json.appId !== 'number' ||
-        typeof json.totalReviews !== 'number' ||
-        typeof json.visibilityScore !== 'number'
-      ) {
-        throw new Error('Unexpected Steam response.')
+      setSteamErr(null)
+      setSteamReviewSuggest(null)
+      setSteamBusy(true)
+      try {
+        const ry = parseReleaseYearFromLabel(releaseLabel.trim() || null)
+        const sp = new URLSearchParams({ q })
+        if (ry != null) sp.set('releaseYear', String(ry))
+        if (opts?.preferAppId != null && opts.preferAppId > 0) {
+          sp.set('appId', String(opts.preferAppId))
+          if (opts.preferSteamName?.trim()) sp.set('steamName', opts.preferSteamName.trim())
+        }
+        const res = await fetch(`/api/steam-visibility?${sp}`)
+        const json = (await res.json()) as {
+          appId?: number
+          steamName?: string
+          totalReviews?: number
+          visibilityScore?: number
+          alternateHits?: { appId: number; name: string }[]
+          error?: string
+        }
+        if (!res.ok) throw new Error(json.error ?? 'Steam lookup failed')
+        if (
+          typeof json.appId !== 'number' ||
+          typeof json.totalReviews !== 'number' ||
+          typeof json.visibilityScore !== 'number'
+        ) {
+          throw new Error('Unexpected Steam response.')
+        }
+        setSteamAppId(json.appId)
+        setSteamReviewCount(json.totalReviews)
+        const suggested = json.visibilityScore
+        setSteamSuggestedVisibility(suggested)
+        setVisibilityScore(suggested)
+        setSteamResolvedName(typeof json.steamName === 'string' ? json.steamName : null)
+        setSteamAlternateHits(Array.isArray(json.alternateHits) ? json.alternateHits : [])
+      } catch (e) {
+        clearSteamSnapshot()
+        setSteamErr(e instanceof Error ? e.message : 'Steam lookup failed')
+      } finally {
+        setSteamBusy(false)
       }
-      setSteamAppId(json.appId)
-      setSteamReviewCount(json.totalReviews)
-      const suggested = json.visibilityScore
-      setSteamSuggestedVisibility(suggested)
-      setVisibilityScore(suggested)
-      setSteamResolvedName(typeof json.steamName === 'string' ? json.steamName : null)
-    } catch (e) {
-      clearSteamSnapshot()
-      setSteamErr(e instanceof Error ? e.message : 'Steam lookup failed')
-    } finally {
-      setSteamBusy(false)
-    }
-  }, [clearSteamSnapshot, name, releaseLabel])
+    },
+    [clearSteamSnapshot, name, releaseLabel],
+  )
 
-  const runEditorLookupBundle = useCallback(async () => {
+  const runEditorLookupBundle = useCallback(async (overrides?: EditorLookupBundleOverrides) => {
     const q = extSearchQ().trim()
     if (q.length < 2) {
       setEditorBundleErr('Need at least 2 characters (game name or IGDB override field).')
@@ -1129,6 +1176,15 @@ export function AddGamePage() {
           query: q,
           releaseLabel: releaseLabel.trim() || undefined,
           ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+          ...(overrides?.steamPreferAppId != null && overrides.steamPreferAppId > 0
+            ? {
+                steamPreferAppId: overrides.steamPreferAppId,
+                ...(overrides.steamPreferSteamName?.trim()
+                  ? { steamPreferSteamName: overrides.steamPreferSteamName.trim() }
+                  : {}),
+              }
+            : {}),
+          ...(overrides?.backloggdSlug?.trim() ? { backloggdSlug: overrides.backloggdSlug.trim() } : {}),
         }),
       })
       const json = (await res.json()) as EditorLookupBundleJson & { error?: string }
@@ -1149,7 +1205,11 @@ export function AddGamePage() {
       }
 
       if (json.backloggd.ok) {
-        setBackloggdData(json.backloggd.data)
+        const d = json.backloggd.data
+        setBackloggdData({
+          ...d,
+          alternateBackloggdGames: Array.isArray(d.alternateBackloggdGames) ? d.alternateBackloggdGames : [],
+        })
       } else {
         setBackloggdData(null)
         setBackloggdErr(json.backloggd.error)
@@ -1161,6 +1221,9 @@ export function AddGamePage() {
         setSteamSuggestedVisibility(json.steam.visibilityScore)
         setVisibilityScore(json.steam.visibilityScore)
         setSteamResolvedName(json.steam.steamName)
+        setSteamAlternateHits(
+          Array.isArray(json.steam.alternateHits) ? json.steam.alternateHits : [],
+        )
         if (json.steam.suggestions) {
           setSteamReviewSuggest({
             storeUrl: json.steam.storeUrl,
@@ -1449,19 +1512,50 @@ export function AddGamePage() {
             )}
           </select>
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Current order</p>
+          <p className="text-[11px] leading-relaxed text-zinc-600">
+            {loadReviewSlug
+              ? 'Click another row to move this review to that slot (same as choosing the matching number above).'
+              : 'Click a row to set your new review to that rank (existing games at that rank and below shift down).'}
+          </p>
           <div className="max-h-52 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/80 p-3">
             {rankedCatalogGames.length === 0 ? (
               <p className="text-sm text-zinc-500">No published reviews yet—this one will be rank 1.</p>
             ) : (
               <ol className="space-y-2 text-sm text-zinc-200">
-                {rankedCatalogGames.map((g) => (
-                  <li key={g.slug} className="flex gap-2">
-                    <span className="w-8 shrink-0 font-mono text-zinc-500 tabular-nums">{g.catalog_rank}.</span>
-                    <span className={g.slug === loadReviewSlug ? 'font-semibold text-emerald-200' : undefined}>
-                      {g.name}
-                    </span>
-                  </li>
-                ))}
+                {rankedCatalogGames.map((g) => {
+                  const disabledRow =
+                    catalogRankPosition == null || (!!loadReviewSlug && (editLoading || !!editLoadError))
+                  const isSelf = !!loadReviewSlug && g.slug === loadReviewSlug
+                  const canPickSlot = !disabledRow && (!loadReviewSlug || !isSelf)
+                  return (
+                    <li key={g.slug}>
+                      <button
+                        type="button"
+                        disabled={!canPickSlot}
+                        title={
+                          isSelf && loadReviewSlug
+                            ? 'This review’s current slot'
+                            : canPickSlot
+                              ? `Set catalog position to rank ${g.catalog_rank}`
+                              : undefined
+                        }
+                        onClick={() => {
+                          if (!canPickSlot) return
+                          setCatalogRankPosition(g.catalog_rank)
+                        }}
+                        className={clsx(
+                          'flex w-full gap-2 rounded-md px-1 py-1 text-left transition',
+                          canPickSlot && 'cursor-pointer hover:bg-zinc-800/90',
+                          !canPickSlot && 'cursor-default opacity-60',
+                          isSelf && 'ring-1 ring-emerald-500/40',
+                        )}
+                      >
+                        <span className="w-8 shrink-0 font-mono text-zinc-500 tabular-nums">{g.catalog_rank}.</span>
+                        <span className={isSelf ? 'font-semibold text-emerald-200' : undefined}>{g.name}</span>
+                      </button>
+                    </li>
+                  )
+                })}
               </ol>
             )}
           </div>
@@ -1642,6 +1736,31 @@ export function AddGamePage() {
                   </a>{' '}
                   <span className="font-mono text-xs text-zinc-500">({backloggdData.backloggdSlug})</span>
                 </p>
+                {backloggdData.alternateBackloggdGames?.length ? (
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      Other Backloggd matches (first search page)
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
+                      The first result is used by default. Switching only refetches Backloggd (Steam is unchanged).
+                    </p>
+                    <ul className="mt-2 flex flex-col gap-1.5">
+                      {backloggdData.alternateBackloggdGames.map((g) => (
+                        <li key={g.slug}>
+                          <button
+                            type="button"
+                            disabled={backloggdBusy || editorBundleBusy}
+                            onClick={() => void runBackloggdSuggestions(g.slug)}
+                            className="w-full rounded-md border border-zinc-700 bg-zinc-900/80 px-2 py-1.5 text-left text-xs text-zinc-200 transition hover:border-amber-500/50 hover:bg-zinc-800 disabled:opacity-50"
+                          >
+                            <span className="font-medium text-amber-200/90">{g.title}</span>
+                            <span className="ml-2 font-mono text-zinc-500">{g.slug}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 {backloggdData.reviewSnippets.length ? (
                   <details className="text-xs text-zinc-400">
                     <summary className="cursor-pointer font-medium text-zinc-300">
@@ -2093,6 +2212,37 @@ export function AddGamePage() {
                   {' · '}
                   {steamReviewCount.toLocaleString()} reviews
                 </p>
+                {steamAlternateHits.length > 0 ? (
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      Other Steam store matches
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
+                      The first search result is used by default. If it is the wrong game, pick the right listing — this
+                      re-runs the full IGDB + Backloggd + Steam bundle with the same name query.
+                    </p>
+                    <ul className="mt-2 flex flex-col gap-1.5">
+                      {steamAlternateHits.map((h) => (
+                        <li key={h.appId}>
+                          <button
+                            type="button"
+                            disabled={steamBusy || editorBundleBusy}
+                            onClick={() =>
+                              void runEditorLookupBundle({
+                                steamPreferAppId: h.appId,
+                                steamPreferSteamName: h.name,
+                              })
+                            }
+                            className="w-full rounded-md border border-zinc-700 bg-zinc-900/80 px-2 py-1.5 text-left text-xs text-zinc-200 transition hover:border-sky-500/50 hover:bg-zinc-800 disabled:opacity-50"
+                          >
+                            <span className="font-medium text-sky-200/90">{h.name}</span>
+                            <span className="ml-2 font-mono text-zinc-500">app {h.appId}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 {steamSuggestedVisibility != null ? (
                   <p className="leading-relaxed text-zinc-500">
                     Suggested needle (Steam formula):{' '}

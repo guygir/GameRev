@@ -59,19 +59,7 @@ async function fetchText(url: string): Promise<{ ok: true; text: string } | { ok
   }
 }
 
-function firstSearchResultBlock(html: string): string | null {
-  const needle = '<div class="col-12 result">'
-  const start = html.indexOf(needle)
-  if (start < 0) return null
-  const from = start + needle.length
-  const next = html.indexOf(needle, from)
-  const block = next >= 0 ? html.slice(start, next) : html.slice(start, Math.min(html.length, start + 12_000))
-  return block
-}
-
-function parseFirstSearchHit(html: string): { gameId: string; slug: string; title: string } | null {
-  const block = firstSearchResultBlock(html)
-  if (!block) return null
+function parseResultBlock(block: string): { gameId: string; slug: string; title: string } | null {
   const gid = block.match(/<div class="row" game_id="(\d+)"/)
   if (!gid?.[1]) return null
   let slug: string | null = null
@@ -85,6 +73,29 @@ function parseFirstSearchHit(html: string): { gameId: string; slug: string; titl
   const h3 = block.match(/<h3 class="mb-0[^"]*">([\s\S]*?)<\/h3>/i)
   const title = h3 ? stripTags(h3[1]).replace(/\s+\d{4}\s*$/, '').trim() || slug : slug
   return { gameId: gid[1], slug, title }
+}
+
+/** First-page Backloggd game search hits (deduped by slug). */
+function parseSearchHits(html: string, max: number): { gameId: string; slug: string; title: string }[] {
+  const needle = '<div class="col-12 result">'
+  const out: { gameId: string; slug: string; title: string }[] = []
+  const seen = new Set<string>()
+  let pos = 0
+  while (out.length < max) {
+    const start = html.indexOf(needle, pos)
+    if (start < 0) break
+    const from = start + needle.length
+    const next = html.indexOf(needle, from)
+    const block = next >= 0 ? html.slice(start, next) : html.slice(start, Math.min(html.length, start + 12_000))
+    pos = next >= 0 ? next : html.length
+    const hit = parseResultBlock(block)
+    if (hit && !seen.has(hit.slug.toLowerCase())) {
+      seen.add(hit.slug.toLowerCase())
+      out.push(hit)
+    }
+    if (next < 0) break
+  }
+  return out
 }
 
 function extractGenresFromGamePage(html: string): string[] {
@@ -263,10 +274,18 @@ export function heuristicEditorSuggestionsFromReviews(
   }
 }
 
+export type BackloggdAlternateGame = {
+  slug: string
+  title: string
+  url: string
+}
+
 export type BackloggdSuggestionsResult = {
   backloggdGameUrl: string
   backloggdTitle: string
   backloggdSlug: string
+  /** Other games on the first search results page (same query), excluding the matched row. */
+  alternateBackloggdGames: BackloggdAlternateGame[]
   reviewSnippets: string[]
   suggestedTags: string[]
   suggestedPlayIfLiked: string[]
@@ -280,7 +299,7 @@ export type BackloggdSuggestionsResult = {
 
 export async function fetchBackloggdSuggestions(
   rawQuery: string,
-  options: { env?: ServerProcessEnv; geminiModel?: string } = {},
+  options: { env?: ServerProcessEnv; geminiModel?: string; backloggdSlug?: string } = {},
 ): Promise<{ ok: true; data: BackloggdSuggestionsResult } | { ok: false; error: string }> {
   const query = rawQuery.trim()
   if (query.length < 2) return { ok: false, error: 'Query too short (need at least 2 characters).' }
@@ -290,10 +309,32 @@ export async function fetchBackloggdSuggestions(
   const searchRes = await fetchText(searchUrl)
   if (searchRes.ok === false) return { ok: false, error: searchRes.error }
 
-  const hit = parseFirstSearchHit(searchRes.text)
-  if (!hit) {
+  const hits = parseSearchHits(searchRes.text, 15)
+  if (!hits.length) {
     return { ok: false, error: 'No game results on Backloggd for that search (first page).' }
   }
+
+  const wantSlug = (options.backloggdSlug ?? '').trim().toLowerCase()
+  const hit =
+    wantSlug && /^[a-z0-9-]+$/i.test((options.backloggdSlug ?? '').trim())
+      ? hits.find((h) => h.slug.toLowerCase() === wantSlug) ?? null
+      : hits[0]!
+  if (!hit) {
+    return {
+      ok: false,
+      error:
+        'That Backloggd slug is not on the first page of search results for this query. Change the query or open Backloggd search in a tab.',
+    }
+  }
+
+  const alternateBackloggdGames: BackloggdAlternateGame[] = hits
+    .filter((h) => h.slug !== hit.slug)
+    .slice(0, 12)
+    .map((h) => ({
+      slug: h.slug,
+      title: h.title,
+      url: `${BACKLOGGD_ORIGIN}/games/${h.slug}/`,
+    }))
 
   const gameUrl = `${BACKLOGGD_ORIGIN}/games/${hit.slug}/`
   const gameRes = await fetchText(gameUrl)
@@ -313,6 +354,7 @@ export async function fetchBackloggdSuggestions(
         backloggdGameUrl: gameUrl,
         backloggdTitle: hit.title,
         backloggdSlug: hit.slug,
+        alternateBackloggdGames,
         reviewSnippets: [],
         suggestedTags: genres.slice(0, 10),
         suggestedPlayIfLiked: [],
@@ -358,6 +400,7 @@ export async function fetchBackloggdSuggestions(
       backloggdGameUrl: gameUrl,
       backloggdTitle: hit.title,
       backloggdSlug: hit.slug,
+      alternateBackloggdGames,
       reviewSnippets: reviewBodies.slice(0, 5).map((s) => (s.length > 420 ? `${s.slice(0, 417)}…` : s)),
       suggestedTags: suggestedTags.slice(0, 16),
       suggestedPlayIfLiked,

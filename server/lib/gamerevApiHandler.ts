@@ -133,7 +133,13 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       const ryRaw = (searchParams.get('releaseYear') ?? '').trim()
       const releaseYear =
         ryRaw && /^\d{4}$/.test(ryRaw) ? parseInt(ryRaw, 10) : null
-      const out = await fetchSteamVisibility(q, releaseYear)
+      const appIdRaw = (searchParams.get('appId') ?? '').trim()
+      const preferAppId =
+        appIdRaw && /^\d+$/.test(appIdRaw) ? parseInt(appIdRaw, 10) : undefined
+      const preferSteamName = (searchParams.get('steamName') ?? '').trim() || undefined
+      const out = await fetchSteamVisibility(q, releaseYear, {
+        ...(preferAppId != null && preferAppId > 0 ? { preferAppId, preferSteamName } : {}),
+      })
       if ('error' in out) return { status: 422, body: { error: out.error } }
       return { status: 200, body: out }
     }
@@ -160,21 +166,45 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         query?: unknown
         releaseLabel?: unknown
         geminiModel?: unknown
+        steamPreferAppId?: unknown
+        steamPreferSteamName?: unknown
+        backloggdSlug?: unknown
       }
       const query = typeof body.query === 'string' ? body.query : ''
       const releaseLabel = typeof body.releaseLabel === 'string' ? body.releaseLabel : undefined
       const geminiModel =
         typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
-      const out = await runEditorLookupBundle(env, { query, releaseLabel, geminiModel })
+      const steamPreferAppIdRaw = body.steamPreferAppId
+      const steamPreferAppId =
+        typeof steamPreferAppIdRaw === 'number' && Number.isInteger(steamPreferAppIdRaw) && steamPreferAppIdRaw > 0
+          ? steamPreferAppIdRaw
+          : typeof steamPreferAppIdRaw === 'string' && /^\d+$/.test(steamPreferAppIdRaw.trim())
+            ? parseInt(steamPreferAppIdRaw.trim(), 10)
+            : undefined
+      const steamPreferSteamName =
+        typeof body.steamPreferSteamName === 'string' && body.steamPreferSteamName.trim()
+          ? body.steamPreferSteamName.trim()
+          : undefined
+      const backloggdSlug =
+        typeof body.backloggdSlug === 'string' && body.backloggdSlug.trim() ? body.backloggdSlug.trim() : undefined
+      const out = await runEditorLookupBundle(env, {
+        query,
+        releaseLabel,
+        geminiModel,
+        ...(steamPreferAppId != null ? { steamPreferAppId, steamPreferSteamName } : {}),
+        ...(backloggdSlug ? { backloggdSlug } : {}),
+      })
       return { status: 200, body: out }
     }
 
     if (method === 'POST' && route === 'backloggd-suggestions') {
-      const body = (jsonBody ?? {}) as { query?: unknown; geminiModel?: unknown }
+      const body = (jsonBody ?? {}) as { query?: unknown; geminiModel?: unknown; backloggdSlug?: unknown }
       const q = typeof body.query === 'string' ? body.query : ''
       const geminiModel =
         typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
-      const out = await fetchBackloggdSuggestions(q, { env, geminiModel })
+      const backloggdSlug =
+        typeof body.backloggdSlug === 'string' && body.backloggdSlug.trim() ? body.backloggdSlug.trim() : undefined
+      const out = await fetchBackloggdSuggestions(q, { env, geminiModel, backloggdSlug })
       if (out.ok === false) return { status: 422, body: { error: out.error } }
       return { status: 200, body: out.data }
     }
