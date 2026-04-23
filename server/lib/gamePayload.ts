@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameStats } from '../../src/review/gameStats.js'
 import { statAxes } from '../../src/review/gameStats.js'
 import { ACCENT_PRESET_HUES } from '../../src/review/reviewDarkAccent.js'
@@ -129,6 +130,143 @@ export function buildReviewedLookup(rows: { name: string; slug: string }[]): Map
     m.set(r.name.trim().toLowerCase(), { slug: r.slug, name: r.name })
   }
   return m
+}
+
+type GamePlayRow = { id: string; name: string; slug: string; play_if_liked: unknown }
+
+function playIfLikedListsName(raw: unknown, nameLower: string): boolean {
+  if (!Array.isArray(raw)) return false
+  const want = nameLower.trim().toLowerCase()
+  if (!want) return false
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const n = String((item as { name?: unknown }).name ?? '')
+      .trim()
+      .toLowerCase()
+    if (n === want) return true
+  }
+  return false
+}
+
+/** True if some catalog row Y matches a pick and Y’s stored list names this review (cross-link). */
+export function hasMutualPlayIfLikedPair(
+  rows: GamePlayRow[],
+  selfId: string,
+  selfName: string,
+  playPicks: { name: string }[],
+): boolean {
+  const selfKey = selfName.trim().toLowerCase()
+  if (!selfKey) return false
+  for (const pick of playPicks) {
+    const pk = pick.name.trim().toLowerCase()
+    if (!pk) continue
+    const y = rows.find((r) => r.id !== selfId && r.name.trim().toLowerCase() === pk)
+    if (!y) continue
+    if (playIfLikedListsName(y.play_if_liked, selfKey)) return true
+  }
+  return false
+}
+
+function playIfLikedJsonStable(a: PlayIfLikedStored[]): string {
+  return JSON.stringify(a)
+}
+
+function asPlayIfLikedStored(raw: unknown): PlayIfLikedStored[] {
+  if (!Array.isArray(raw)) return []
+  const out: PlayIfLikedStored[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const name = String((item as { name?: unknown }).name ?? '').trim()
+    if (!name) continue
+    const slugRaw = (item as { slug?: unknown }).slug
+    const slug =
+      slugRaw === null || slugRaw === undefined || slugRaw === ''
+        ? null
+        : typeof slugRaw === 'string'
+          ? slugRaw
+          : null
+    out.push({ name, slug })
+  }
+  return out
+}
+
+function mutualPartnerIds(
+  rows: GamePlayRow[],
+  selfId: string,
+  selfName: string,
+  playPicks: { name: string }[],
+): string[] {
+  const selfKey = selfName.trim().toLowerCase()
+  if (!selfKey) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const pick of playPicks) {
+    const pk = pick.name.trim().toLowerCase()
+    if (!pk) continue
+    const y = rows.find((r) => r.id !== selfId && r.name.trim().toLowerCase() === pk)
+    if (!y || seen.has(y.id)) continue
+    if (!playIfLikedListsName(y.play_if_liked, selfKey)) continue
+    seen.add(y.id)
+    out.push(y.id)
+  }
+  return out
+}
+
+/**
+ * Re-resolve one row’s `play_if_liked` when it forms a mutual pair with another review (same
+ * editor picks + DB), so slugs catch up after both titles exist in the catalog.
+ */
+async function maybeRefreshPlayIfLikedAfterMutualPair(
+  sb: SupabaseClient,
+  gameId: string,
+  selfName: string,
+  playPicks: { name: string }[],
+  storedPlayIfLiked: PlayIfLikedStored[],
+): Promise<void> {
+  const { data: rows, error } = await sb.from('games').select('id, name, slug, play_if_liked')
+  if (error || !rows?.length) return
+  const typed = rows as GamePlayRow[]
+  if (!hasMutualPlayIfLikedPair(typed, gameId, selfName, playPicks)) return
+  const reviewed = buildReviewedLookup(typed.map((r) => ({ name: r.name, slug: r.slug })))
+  const next = resolvePlayIfLiked(playPicks, reviewed)
+  if (playIfLikedJsonStable(next) === playIfLikedJsonStable(storedPlayIfLiked)) return
+  const { error: u } = await sb.from('games').update({ play_if_liked: next }).eq('id', gameId)
+  if (u) {
+    console.warn('[maybeRefreshPlayIfLikedAfterMutualPair] update failed:', u.message)
+  }
+}
+
+/**
+ * After saving review G: refresh G’s links if mutual; then refresh each mutual partner P so
+ * e.g. older rows pick up slugs once the counterpart review exists.
+ */
+export async function maybeRefreshPlayIfLikedMutualCluster(
+  sb: SupabaseClient,
+  gameId: string,
+  selfName: string,
+  playPicks: { name: string }[],
+  storedPlayIfLiked: PlayIfLikedStored[],
+): Promise<void> {
+  try {
+    await maybeRefreshPlayIfLikedAfterMutualPair(sb, gameId, selfName, playPicks, storedPlayIfLiked)
+
+    const { data: rows, error } = await sb.from('games').select('id, name, slug, play_if_liked')
+    if (error || !rows?.length) return
+    const typed = rows as GamePlayRow[]
+    const partnerIds = mutualPartnerIds(typed, gameId, selfName, playPicks)
+    for (const pid of partnerIds) {
+      const P = typed.find((r) => r.id === pid)
+      if (!P) continue
+      const pStored = asPlayIfLikedStored(P.play_if_liked)
+      const pPicks = pStored.map((p) => ({ name: p.name }))
+      await maybeRefreshPlayIfLikedAfterMutualPair(sb, P.id, P.name, pPicks, pStored)
+    }
+  } catch (e) {
+    console.warn(
+      '[maybeRefreshPlayIfLikedMutualCluster]',
+      e instanceof Error ? e.message : String(e),
+    )
+  }
 }
 
 /** `null` = auto from slug; 0–4 = preset index. Invalid values become null. */

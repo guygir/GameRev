@@ -11,6 +11,7 @@ import {
   parseStats,
   resolveAccentRowFromBody,
   resolvePlayIfLiked,
+  maybeRefreshPlayIfLikedMutualCluster,
   type AddGameBody,
 } from './gamePayload.js'
 
@@ -185,7 +186,10 @@ export async function updateGameFromBody(
   if (rankListErr) return { ok: false, status: 500, error: rankListErr.message }
   const orderedIds = (rankRows ?? []).map((r) => r.id as string)
   const n = orderedIds.length
-  if (n === 0) return { ok: true, slug }
+  if (n === 0) {
+    await maybeRefreshPlayIfLikedMutualCluster(sb, gameId, name, playPicks, play_if_liked)
+    return { ok: true, slug }
+  }
 
   const newPos = parseCatalogRankPosition(b.catalogRank, 1, n)
   if (newPos == null) {
@@ -203,6 +207,8 @@ export async function updateGameFromBody(
   const nextOrder = [...without.slice(0, newPos - 1), gameId, ...without.slice(newPos - 1)]
   const orderOut = await persistCatalogOrder(sb, nextOrder)
   if (orderOut.ok === false) return { ok: false, status: 500, error: orderOut.error }
+
+  await maybeRefreshPlayIfLikedMutualCluster(sb, gameId, name, playPicks, play_if_liked)
 
   return { ok: true, slug }
 }

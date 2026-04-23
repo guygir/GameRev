@@ -12,6 +12,7 @@ import {
   parseStats,
   resolveAccentRowFromBody,
   resolvePlayIfLiked,
+  maybeRefreshPlayIfLikedMutualCluster,
   type AddGameBody,
 } from './gamePayload.js'
 
@@ -171,6 +172,8 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
     const { error } = await sb.from('game_tags').insert(tags.map((tag) => ({ game_id: gameId, tag })))
     if (error) return { ok: false, status: 500, error: error.message }
   }
+
+  await maybeRefreshPlayIfLikedMutualCluster(sb, gameId, name, playPicks, play_if_liked)
 
   return { ok: true, slug }
 }
