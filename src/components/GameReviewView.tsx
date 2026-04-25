@@ -35,6 +35,8 @@ export type GameReviewViewModel = {
   cons: string[]
   /** Long-form summary; null shows a placeholder until stored in DB. */
   reviewSummary: string | null
+  /** One line under the title when set (`games.editor_note`); omitted when null/blank. */
+  editorNote: string | null
   stats: GameStats
   radarLabel: string
   /** DB `accent_hue` (0–359); null if unset. */
@@ -73,6 +75,20 @@ function resolvedReviewSummary(vm: GameReviewViewModel): string {
   if (t) return t
   const i = hashString(vm.name) % PLACEHOLDER_SUMMARIES.length
   return PLACEHOLDER_SUMMARIES[i]!
+}
+
+function EditorNoteBody({ mode, className, children }: { mode: ReviewMode; className?: string; children: string }) {
+  return (
+    <p
+      className={clsx(
+        'text-sm italic leading-relaxed',
+        className,
+        mode === 'light' ? 'text-zinc-700' : 'text-[#f4e9d8]/85',
+      )}
+    >
+      {children}
+    </p>
+  )
 }
 
 type GameReviewViewProps = {
@@ -127,6 +143,8 @@ export function GameReviewView({
     },
     [onModeChange],
   )
+
+  const editorLine = useMemo(() => (vm.editorNote ?? '').trim(), [vm.editorNote])
 
   return (
     <div
@@ -227,6 +245,17 @@ export function GameReviewView({
                     </>
                   ) : null}
                 </p>
+              ) : null}
+              {editorLine ? (
+                <div
+                  className="motion-rise mt-6"
+                  style={{ ['--motion-rise-delay' as string]: '280ms' }}
+                >
+                  <h3 className={clsx(theme.fontDisplay, theme.prosHeading)}>Editor&apos;s note</h3>
+                  <EditorNoteBody mode={mode} className={clsx('mt-2', theme.fontBody)}>
+                    {editorLine}
+                  </EditorNoteBody>
+                </div>
               ) : null}
             </div>
             <div
@@ -400,8 +429,13 @@ export function GameReviewView({
             </div>
           </div>
 
-          <details className={clsx(theme.details, 'mt-10')}>
-            <summary className={theme.summary}>Summary</summary>
+          <div
+            className={clsx(
+              'mt-10 border-t pt-10',
+              mode === 'light' ? 'border-zinc-200' : 'border-white/10',
+            )}
+          >
+            <h2 className={clsx(theme.fontDisplay, theme.h2)}>Summary</h2>
             <p
               className={clsx(
                 theme.fontBody,
@@ -411,7 +445,7 @@ export function GameReviewView({
             >
               {resolvedReviewSummary(vm)}
             </p>
-          </details>
+          </div>
         </section>
       </div>
 

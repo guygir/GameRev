@@ -28,6 +28,8 @@ export type AddGameBody = {
   cons: string[]
   /** Optional capsule summary for `/g/:slug` (stored as `games.summary`). */
   summary?: string | null
+  /** Optional one-liner; stored as `games.editor_note`, shown in three labeled blocks on the review. */
+  editorNote?: string | null
   playIfLiked: { name: string }[]
   /** 1-based position in the catalog (1 = first). Required on add/update from the editor. */
   catalogRank?: number

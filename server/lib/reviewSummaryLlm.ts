@@ -69,6 +69,151 @@ function parseSummaryJson(raw: string): string | null {
   }
 }
 
+function parseEditorNoteJson(raw: string): string | null {
+  const trimmed = raw.trim()
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  if (start < 0 || end <= start) return null
+  try {
+    const o = JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>
+    const s = o.editorNote
+    if (typeof s !== 'string') return null
+    const t = s.trim().replace(/\r\n/g, ' ').replace(/\s+/g, ' ')
+    if (!t) return null
+    return t.length > 600 ? t.slice(0, 600) : t
+  } catch {
+    return null
+  }
+}
+
+function buildEditorNoteFromSummaryPrompt(gameName: string, summary: string): string {
+  const nameCtx =
+    gameName.trim().length >= 2
+      ? `Game title (tone only; do not repeat as a standalone headline): ${JSON.stringify(clip(gameName.trim(), 200))}\n\n`
+      : ''
+  return `${nameCtx}You help a solo game-review editor write a single punchy line for the top of the public review.
+
+Source capsule / summary (distill this; do not invent plot beats beyond what is already implied):
+${JSON.stringify(clip(summary, 11_000))}
+
+Write exactly ONE sentence in a personal editorial voice: confident, skimmable, no markdown, no bullet characters, no leading label like "Editor's note:". No spoilers beyond the summary. Aim under ~220 characters if you can; hard max one sentence.
+
+Return ONLY valid JSON with exactly this shape:
+{"editorNote":"..."}`
+}
+
+/** When cloud models are unavailable or fail — clip from the summary only (no canned site copy). */
+function heuristicEditorNoteFromSummary(summary: string): string {
+  const t = summary.replace(/\s+/g, ' ').trim()
+  if (!t) return ''
+  const parts = t.split(/(?<=[.!?])\s+/)
+  let line = (parts[0] ?? t).trim()
+  if (line.length < 24 && parts.length > 1) {
+    line = `${parts[0]!.trim()} ${parts[1]!.trim()}`.trim()
+  }
+  line = line.replace(/^["'“”]+|["'“”]+$/g, '').trim()
+  const out = clip(line, 600)
+  return out || clip(t, 220)
+}
+
+async function editorNoteOpenAi(key: string, prompt: string): Promise<string | null> {
+  const max_tokens = 220
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort(), 45_000)
+  try {
+    const res = await fetch(OPENAI_URL, {
+      method: 'POST',
+      signal: ac.signal,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0.4,
+        max_tokens,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'You output only compact JSON for a review editor tool.' },
+          { role: 'user', content: prompt },
+        ],
+      }),
+    })
+    const rawText = await res.text()
+    if (!res.ok) {
+      let err = rawText.slice(0, 200)
+      try {
+        const j = JSON.parse(rawText) as { error?: { message?: string } }
+        err = j.error?.message ?? err
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`OpenAI: ${err}`)
+    }
+    const json = JSON.parse(rawText) as { choices?: { message?: { content?: string } }[] }
+    const content = json.choices?.[0]?.message?.content
+    if (!content) return null
+    return parseEditorNoteJson(content)
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+async function editorNoteGemini(key: string, models: string[], prompt: string): Promise<string | null> {
+  let lastErrorBody = ''
+  const maxAttemptsPerModel = 3
+  const maxOutputTokens = 512
+
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
+
+    attempts: for (let attempt = 0; attempt < maxAttemptsPerModel; attempt++) {
+      const ac = new AbortController()
+      const t = setTimeout(() => ac.abort(), 45_000)
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          signal: ac.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.4,
+              maxOutputTokens,
+              responseMimeType: 'application/json',
+            },
+          }),
+        })
+        const rawText = await res.text()
+        if (!res.ok) {
+          lastErrorBody = shortenGeminiErrorBody(rawText)
+          if (res.status === 404) break attempts
+          if (GEMINI_TRANSIENT_HTTP.has(res.status) && attempt < maxAttemptsPerModel - 1) {
+            await sleep(700 * 2 ** attempt + Math.floor(Math.random() * 250))
+            continue attempts
+          }
+          if (GEMINI_TRANSIENT_HTTP.has(res.status)) break attempts
+          throw new Error(`Gemini: ${lastErrorBody}`)
+        }
+        const json = JSON.parse(rawText) as {
+          candidates?: { content?: { parts?: { text?: string }[] } }[]
+        }
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text
+        if (!text) break attempts
+        const parsed = parseEditorNoteJson(text)
+        if (parsed) return parsed
+      } finally {
+        clearTimeout(t)
+      }
+    }
+  }
+  throw new Error(
+    lastErrorBody
+      ? `Gemini: ${lastErrorBody}`
+      : 'Gemini: no model returned usable JSON (tried multiple models).',
+  )
+}
+
 async function summarizeOpenAi(
   key: string,
   prompt: string,
@@ -253,6 +398,61 @@ export async function generateReviewCapsuleSummary(
     try {
       const out = await summarizeGemini(gemini, geminiModelsToTry(env, opts?.geminiModel ?? null), prompt)
       if (out) return { ok: true, summary: out, usedHeuristicFallback: false }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  return fallback()
+}
+
+export type EditorNoteFromSummaryOk = {
+  ok: true
+  editorNote: string
+  usedHeuristicFallback: boolean
+}
+
+/**
+ * One-sentence editor kicker distilled from the capsule summary (OpenAI if configured, else Gemini; heuristic fallback).
+ */
+export async function generateEditorNoteFromSummary(
+  env: ServerProcessEnv,
+  input: { gameName: string; summary: string },
+  opts?: { geminiModel?: string | null },
+): Promise<EditorNoteFromSummaryOk | { ok: false; error: string }> {
+  const gameName = input.gameName.trim()
+  const summary = input.summary.trim()
+  if (summary.length < 20) {
+    return { ok: false, error: 'Write more summary text first (at least ~20 characters).' }
+  }
+
+  const prompt = buildEditorNoteFromSummaryPrompt(gameName, summary)
+  const openai = (env.OPENAI_API_KEY ?? '').trim()
+  const gemini = (env.GEMINI_API_KEY ?? '').trim()
+
+  const fallback = (): EditorNoteFromSummaryOk => ({
+    ok: true,
+    editorNote: heuristicEditorNoteFromSummary(summary),
+    usedHeuristicFallback: true,
+  })
+
+  if (!openai && !gemini) {
+    return fallback()
+  }
+
+  if (openai) {
+    try {
+      const out = await editorNoteOpenAi(openai, prompt)
+      if (out) return { ok: true, editorNote: out, usedHeuristicFallback: false }
+    } catch {
+      if (!gemini) return fallback()
+    }
+  }
+
+  if (gemini) {
+    try {
+      const out = await editorNoteGemini(gemini, geminiModelsToTry(env, opts?.geminiModel ?? null), prompt)
+      if (out) return { ok: true, editorNote: out, usedHeuristicFallback: false }
     } catch {
       /* fall through */
     }

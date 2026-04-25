@@ -29,6 +29,7 @@ type GameJoinRow = {
   pros: string[]
   cons: string[]
   summary: string | null
+  editor_note: string | null
   play_if_liked: PlayIfLikedStored[]
   game_genres: { genre: string }[] | null
   game_tags: { tag: string }[] | null
@@ -97,6 +98,7 @@ export function GameReviewPage() {
           pros,
           cons,
           summary,
+          editor_note,
           play_if_liked,
           game_genres ( genre ),
           game_tags ( tag ),
@@ -148,6 +150,7 @@ export function GameReviewPage() {
         pros: row.pros ?? [],
         cons: row.cons ?? [],
         reviewSummary: row.summary?.trim() ? row.summary.trim() : null,
+        editorNote: row.editor_note?.trim() ? row.editor_note.trim() : null,
         stats: row.stats,
         radarLabel: `${row.name} review stats radar chart`,
         accentHue:

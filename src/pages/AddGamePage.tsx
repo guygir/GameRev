@@ -243,6 +243,9 @@ export function AddGamePage() {
   const [outlineFromSummaryErr, setOutlineFromSummaryErr] = useState<string | null>(null)
   /** Last successful outline-from-summary used heuristic data, not cloud LLM output. */
   const [outlineNotFromCloudAi, setOutlineNotFromCloudAi] = useState(false)
+  const [editorNoteFromSummaryBusy, setEditorNoteFromSummaryBusy] = useState(false)
+  const [editorNoteFromSummaryErr, setEditorNoteFromSummaryErr] = useState<string | null>(null)
+  const [editorNoteFromSummaryNonAi, setEditorNoteFromSummaryNonAi] = useState(false)
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [tagDraft, setTagDraft] = useState('')
 
@@ -252,6 +255,7 @@ export function AddGamePage() {
   const [prosText, setProsText] = useState('')
   const [consText, setConsText] = useState('')
   const [summaryText, setSummaryText] = useState('')
+  const [editorNoteText, setEditorNoteText] = useState('')
 
   const [steamAppId, setSteamAppId] = useState<number | null>(null)
   const [steamReviewCount, setSteamReviewCount] = useState<number | null>(null)
@@ -318,10 +322,14 @@ export function AddGamePage() {
     setProsText('')
     setConsText('')
     setSummaryText('')
+    setEditorNoteText('')
     setSummaryEnglishErr(null)
     setSummaryEnglishBusy(false)
     setOutlineFromSummaryErr(null)
     setOutlineFromSummaryBusy(false)
+    setEditorNoteFromSummaryErr(null)
+    setEditorNoteFromSummaryBusy(false)
+    setEditorNoteFromSummaryNonAi(false)
     setSteamAppId(null)
     setSteamReviewCount(null)
     setVisibilityScore(null)
@@ -428,6 +436,7 @@ export function AddGamePage() {
         pros: string[]
         cons: string[]
         summary: string | null
+        editor_note: string | null
         play_if_liked: { name: string; slug?: string | null }[] | null
         game_genres: { genre: string }[] | null
         game_tags: { tag: string }[] | null
@@ -456,6 +465,7 @@ export function AddGamePage() {
           pros,
           cons,
           summary,
+          editor_note,
           play_if_liked,
           game_genres ( genre ),
           game_tags ( tag ),
@@ -533,6 +543,7 @@ export function AddGamePage() {
       setProsText((row.pros ?? []).join('\n'))
       setConsText((row.cons ?? []).join('\n'))
       setSummaryText(row.summary?.trim() ?? '')
+      setEditorNoteText(row.editor_note?.trim() ?? '')
       const pil = Array.isArray(row.play_if_liked) ? row.play_if_liked : []
       setPlayIfLikedText(pil.map((p) => p.name).join('\n'))
       setExtGenreQuery(row.name)
@@ -841,6 +852,42 @@ export function AddGamePage() {
     },
     [summaryText, name, cloudLlmGeminiModel],
   )
+
+  const runEditorNoteFromSummary = useCallback(async () => {
+    const summary = summaryText.trim()
+    if (summary.length < 20) {
+      setEditorNoteFromSummaryErr('Write more summary text first (at least ~20 characters).')
+      return
+    }
+    setEditorNoteFromSummaryBusy(true)
+    setEditorNoteFromSummaryErr(null)
+    setEditorNoteFromSummaryNonAi(false)
+    try {
+      const res = await fetch('/api/editor-note-from-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameName: name.trim(),
+          summary,
+          ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
+        }),
+      })
+      const json = (await res.json()) as {
+        editorNote?: string
+        usedHeuristicFallback?: boolean
+        error?: string
+      }
+      if (!res.ok) throw new Error(json.error ?? 'Editor note generation failed')
+      const line = typeof json.editorNote === 'string' ? json.editorNote.trim() : ''
+      if (!line) throw new Error('Empty editor note from server')
+      setEditorNoteText(line)
+      setEditorNoteFromSummaryNonAi(json.usedHeuristicFallback === true)
+    } catch (e) {
+      setEditorNoteFromSummaryErr(e instanceof Error ? e.message : 'Editor note generation failed')
+    } finally {
+      setEditorNoteFromSummaryBusy(false)
+    }
+  }, [summaryText, name, cloudLlmGeminiModel])
 
   const runOutlineFromSummary = useCallback(async () => {
     const gameName = name.trim()
@@ -1302,6 +1349,7 @@ export function AddGamePage() {
         pros: linesToList(prosText),
         cons: linesToList(consText),
         summary: summaryText.trim() || null,
+        editorNote: editorNoteText.trim() || null,
         playIfLiked,
         accentHue: accentGrayLevel != null ? null : accentHue,
         accentGrayLevel: accentGrayLevel != null ? accentGrayLevel : null,
@@ -1323,7 +1371,7 @@ export function AddGamePage() {
           /platforms|release_label|accent_preset|accent_hue|accent_gray_level|catalog_rank|schema cache/i.test(
             json.error ?? '',
           )
-            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, `20260415120000_accent_hue.sql`, `20260419120000_accent_gray_level.sql`, `20260416100000_catalog_rank.sql`, and `20260417120000_review_summary.sql`.'
+            ? ' Run pending Supabase migrations (see supabase/migrations), especially `20260413000000_ensure_games_review_columns.sql`, `20260414120000_accent_preset.sql`, `20260415120000_accent_hue.sql`, `20260419120000_accent_gray_level.sql`, `20260416100000_catalog_rank.sql`, `20260417120000_review_summary.sql`, and `20260420120000_editor_note.sql`.'
             : ''
         throw new Error((json.error ?? 'Save failed') + hint)
       }
@@ -1352,6 +1400,7 @@ export function AddGamePage() {
     accentGrayLevel,
     catalogRankPosition,
     consText,
+    editorNoteText,
     summaryText,
     coverImageUrl,
     editLoadError,
@@ -2716,7 +2765,12 @@ export function AddGamePage() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={summarySuggestBusy || outlineFromSummaryBusy || summaryEnglishBusy}
+              disabled={
+                summarySuggestBusy ||
+                outlineFromSummaryBusy ||
+                summaryEnglishBusy ||
+                editorNoteFromSummaryBusy
+              }
               onClick={() => void runReviewSummarySuggest()}
               className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition hover:border-amber-500/50 hover:bg-zinc-800 disabled:opacity-50"
             >
@@ -2726,7 +2780,12 @@ export function AddGamePage() {
             <span className="select-none text-zinc-600">:</span>
             <button
               type="button"
-              disabled={summarySuggestBusy || outlineFromSummaryBusy || summaryEnglishBusy}
+              disabled={
+                summarySuggestBusy ||
+                outlineFromSummaryBusy ||
+                summaryEnglishBusy ||
+                editorNoteFromSummaryBusy
+              }
               onClick={() => void runAdjustSummaryEnglish('down')}
               title="Slightly simpler English (easier to read)"
               aria-label="Slightly simpler English"
@@ -2736,7 +2795,12 @@ export function AddGamePage() {
             </button>
             <button
               type="button"
-              disabled={summarySuggestBusy || outlineFromSummaryBusy || summaryEnglishBusy}
+              disabled={
+                summarySuggestBusy ||
+                outlineFromSummaryBusy ||
+                summaryEnglishBusy ||
+                editorNoteFromSummaryBusy
+              }
               onClick={() => void runAdjustSummaryEnglish('up')}
               title="Slightly richer English (more advanced)"
               aria-label="Slightly richer English"
@@ -2754,7 +2818,12 @@ export function AddGamePage() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={outlineFromSummaryBusy || summarySuggestBusy || summaryEnglishBusy}
+              disabled={
+                outlineFromSummaryBusy ||
+                summarySuggestBusy ||
+                summaryEnglishBusy ||
+                editorNoteFromSummaryBusy
+              }
               onClick={() => void runOutlineFromSummary()}
               className="rounded-lg border border-violet-600/60 bg-violet-950/50 px-3 py-1.5 text-xs font-semibold text-violet-100 transition hover:border-violet-500/70 hover:bg-violet-900/50 disabled:opacity-50"
             >
@@ -2786,6 +2855,49 @@ export function AddGamePage() {
             rows={6}
             className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
             placeholder="Short verdict for skimmers—no spoilers, your own words."
+          />
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+          <h2 className="text-lg font-semibold text-white">Editor&apos;s note</h2>
+          <p className="text-xs leading-relaxed text-zinc-500">
+            One informal line (optional). On <span className="font-mono text-zinc-400">/g/…</span> it appears once, as{' '}
+            <strong className="text-zinc-400">Editor&apos;s note</strong> under the game name, only when this field is
+            saved non-empty. Leave blank and save to show nothing there.
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={
+                editorNoteFromSummaryBusy ||
+                summarySuggestBusy ||
+                outlineFromSummaryBusy ||
+                summaryEnglishBusy ||
+                summaryText.trim().length < 20
+              }
+              onClick={() => void runEditorNoteFromSummary()}
+              className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition hover:border-amber-500/50 hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {editorNoteFromSummaryBusy ? 'Writing…' : '1 sentence from summary (AI)'}
+            </button>
+            <span className="text-[11px] text-zinc-500">
+              Distills the Summary box into one personal line (cloud LLM when keys exist; otherwise a short heuristic
+              clip). Uses the same Gemini model order as other AI tools here when Gemini runs.
+            </span>
+          </div>
+          {editorNoteFromSummaryErr ? <p className="text-xs text-rose-300">{editorNoteFromSummaryErr}</p> : null}
+          {editorNoteFromSummaryNonAi ? (
+            <p className="rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
+              This line was filled using heuristic fallback, not cloud AI output.
+            </p>
+          ) : null}
+          <textarea
+            value={editorNoteText}
+            onChange={(e) => setEditorNoteText(e.target.value)}
+            rows={2}
+            maxLength={600}
+            className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
+            placeholder="Optional one-liner under the game title; leave blank to hide on the public review."
           />
         </section>
 

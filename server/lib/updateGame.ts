@@ -79,6 +79,7 @@ export async function updateGameFromBody(
   const pros = normalizeStringList(b.pros, 40, 600)
   const cons = normalizeStringList(b.cons, 40, 600)
   const summary = normalizeSummaryText(b.summary, 12_000)
+  const editor_note = normalizeSummaryText(b.editorNote, 600)
   const playPicks = normalizePlayIfLiked(b.playIfLiked, 16)
 
   const rawBody = b as Record<string, unknown>
@@ -156,6 +157,7 @@ export async function updateGameFromBody(
       pros,
       cons,
       summary,
+      editor_note,
       play_if_liked,
       ...(patchSteam
         ? {

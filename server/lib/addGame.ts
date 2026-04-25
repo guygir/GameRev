@@ -79,6 +79,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   const pros = normalizeStringList(b.pros, 40, 600)
   const cons = normalizeStringList(b.cons, 40, 600)
   const summary = normalizeSummaryText(b.summary, 12_000)
+  const editor_note = normalizeSummaryText(b.editorNote, 600)
   const steam_app_id = optionalSteamAppId(b.steamAppId)
   const steam_review_count = optionalSteamReviewCount(b.steamReviewCount)
   const visibility_score = optionalVisibilityScore01(b.visibilityScore)
@@ -144,6 +145,7 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
       pros,
       cons,
       summary,
+      editor_note,
       play_if_liked,
       accent_hue,
       accent_gray_level,

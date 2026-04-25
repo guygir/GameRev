@@ -10,7 +10,11 @@ import { syncReaderCommentToGithub } from './githubGameComments.js'
 import { deleteReaderCommentFromBody } from './deleteReaderComment.js'
 import { fetchSteamVisibility } from './steamPopularity.js'
 import { runEditorLookupBundle } from './editorLookupBundle.js'
-import { adjustReviewSummaryEnglishLevel, generateReviewCapsuleSummary } from './reviewSummaryLlm.js'
+import {
+  adjustReviewSummaryEnglishLevel,
+  generateEditorNoteFromSummary,
+  generateReviewCapsuleSummary,
+} from './reviewSummaryLlm.js'
 import { generateOutlineFromSummary } from './outlineFromSummaryLlm.js'
 import { tidyProsConsLines } from './prosConsTidyLlm.js'
 import type { ServerProcessEnv } from './serverEnv.js'
@@ -227,6 +231,24 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       }
     }
 
+    if (method === 'POST' && route === 'editor-note-from-summary') {
+      const body = (jsonBody ?? {}) as {
+        gameName?: unknown
+        summary?: unknown
+        geminiModel?: unknown
+      }
+      const gameName = typeof body.gameName === 'string' ? body.gameName : ''
+      const summary = typeof body.summary === 'string' ? body.summary : ''
+      const geminiModel =
+        typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
+      const out = await generateEditorNoteFromSummary(env, { gameName, summary }, { geminiModel })
+      if (out.ok === false) return { status: 422, body: { error: out.error } }
+      return {
+        status: 200,
+        body: { editorNote: out.editorNote, usedHeuristicFallback: out.usedHeuristicFallback },
+      }
+    }
+
     if (method === 'POST' && route === 'review-summary-suggest') {
       const body = (jsonBody ?? {}) as {
         gameName?: unknown
@@ -336,6 +358,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
           pros,
           cons,
           summary,
+          editor_note,
           play_if_liked,
           created_at,
           game_genres ( genre ),
@@ -366,6 +389,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         pros: string[]
         cons: string[]
         summary: string | null
+        editor_note: string | null
         play_if_liked: unknown
         created_at: string
         game_genres: { genre: string }[] | null
@@ -404,6 +428,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
             pros: row.pros ?? [],
             cons: row.cons ?? [],
             summary: row.summary?.trim() ? row.summary.trim() : null,
+            editorNote: row.editor_note?.trim() ? row.editor_note.trim() : null,
             playIfLiked: row.play_if_liked,
             genres: (row.game_genres ?? []).map((r) => r.genre),
             tags: (row.game_tags ?? []).map((r) => r.tag),
