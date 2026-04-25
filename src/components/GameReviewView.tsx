@@ -251,7 +251,14 @@ export function GameReviewView({
                   className="motion-rise mt-6"
                   style={{ ['--motion-rise-delay' as string]: '280ms' }}
                 >
-                  <h3 className={clsx(theme.fontDisplay, theme.prosHeading)}>Editor&apos;s note</h3>
+                  <h3
+                    className={clsx(
+                      theme.fontDisplay,
+                      'text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--review-accent)]',
+                    )}
+                  >
+                    Editor&apos;s note
+                  </h3>
                   <EditorNoteBody mode={mode} className={clsx('mt-2', theme.fontBody)}>
                     {editorLine}
                   </EditorNoteBody>
