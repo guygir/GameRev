@@ -41,10 +41,14 @@ export async function recordReviewViewFromBody(
     p_visitor_key: visitorKey,
     p_user_agent_hash: hashUserAgent(ua),
   })
-  if (error) return { ok: false, status: /not found/i.test(error.message) ? 404 : 500, error: error.message }
+  if (error) {
+    console.warn('[GameRev] record_review_view failed', { slug, error: error.message, details: error.details })
+    return { ok: false, status: /not found/i.test(error.message) ? 404 : 500, error: error.message }
+  }
 
   const first = Array.isArray(data) ? data[0] : data
   const viewCount = typeof first?.view_count === 'number' ? first.view_count : 0
   const inserted = first?.inserted === true
+  console.debug('[GameRev] record_review_view result', { slug, inserted, viewCount })
   return { ok: true, viewCount, inserted }
 }

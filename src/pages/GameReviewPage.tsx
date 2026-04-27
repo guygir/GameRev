@@ -250,11 +250,30 @@ export function GameReviewPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slug, visitorKey }),
     })
-      .then((res) => {
-        if (res.ok) markTrackedReviewToday(slug)
+      .then(async (res) => {
+        const json = (await res.json().catch(() => null)) as
+          | { viewCount?: number; inserted?: boolean; error?: string }
+          | null
+        if (res.ok) {
+          markTrackedReviewToday(slug)
+          console.debug('[GameRev] review-view tracked', {
+            slug,
+            inserted: json?.inserted,
+            viewCount: json?.viewCount,
+          })
+          return
+        }
+        console.warn('[GameRev] review-view failed', {
+          slug,
+          status: res.status,
+          error: json?.error ?? res.statusText,
+        })
       })
-      .catch(() => {
-        /* Analytics should never affect reading the review. */
+      .catch((err) => {
+        console.warn('[GameRev] review-view request error', {
+          slug,
+          error: err instanceof Error ? err.message : String(err),
+        })
       })
   }, [error, gameId, loading, slug])
 

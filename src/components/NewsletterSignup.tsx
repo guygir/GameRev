@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import clsx from 'clsx'
 
+const SUCCESS_MESSAGE =
+  'Check your email for a confirmation link.\nThis might take a while... Go read a review in the meantime!'
+
 type NewsletterSignupProps = {
   isLight: boolean
   className?: string
@@ -28,7 +31,7 @@ export function NewsletterSignup({ isLight, className }: NewsletterSignupProps) 
       const json = (await res.json()) as { message?: string; error?: string }
       if (!res.ok) throw new Error(json.error ?? 'Newsletter signup failed.')
       setEmail('')
-      setStatus(json.message ?? 'Check your email to confirm your subscription.')
+      setStatus(json.message ?? SUCCESS_MESSAGE)
     } catch (e) {
       setStatus(e instanceof Error ? e.message : 'Newsletter signup failed.')
     } finally {
@@ -39,16 +42,16 @@ export function NewsletterSignup({ isLight, className }: NewsletterSignupProps) 
   return (
     <section
       className={clsx(
-        'rounded-2xl border p-6',
-        isLight ? 'border-zinc-200 bg-white' : 'border-white/10 bg-white/5',
+        'rounded-2xl border p-5 shadow-sm',
+        isLight ? 'border-zinc-200 bg-white/80' : 'border-white/10 bg-white/5',
         className,
       )}
     >
-      <h2 className={clsx('text-lg font-semibold', isLight ? 'text-zinc-950' : 'text-[#fff4e4]')}>
-        Subscribe
+      <h2 className={clsx('text-base font-semibold', isLight ? 'text-zinc-950' : 'text-[#fff4e4]')}>
+        Subscribe to get an email when a new review is up!
       </h2>
       <p className={clsx('mt-2 text-sm leading-relaxed', isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/70')}>
-        Get an email when a new review is up! Unsubscribe anytime.
+        Unsubscribe anytime.
       </p>
       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         <input
@@ -60,20 +63,29 @@ export function NewsletterSignup({ isLight, className }: NewsletterSignupProps) 
           className={clsx(
             'min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[color:var(--review-accent)]',
             isLight
-              ? 'border-zinc-200 bg-white text-zinc-900 placeholder:text-zinc-400'
-              : 'border-white/10 bg-black/20 text-[#f4e9d8] placeholder:text-[#f4e9d8]/40',
+              ? 'border-[color:var(--review-accent-border)] bg-white/90 text-zinc-900 placeholder:text-zinc-400'
+              : 'border-[color:var(--review-accent-border)] bg-black/20 text-[#f4e9d8] placeholder:text-[#f4e9d8]/40',
           )}
         />
         <button
           type="button"
           onClick={() => void submit()}
           disabled={busy}
-          className="rounded-lg bg-[color:var(--review-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-105 disabled:opacity-50"
+          className={clsx(
+            'rounded-lg border px-4 py-2 text-sm font-semibold transition disabled:opacity-50',
+            isLight
+              ? 'border-zinc-200 bg-white text-zinc-800 hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent)]'
+              : 'border-white/10 bg-black/10 text-[#f4e9d8] hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]',
+          )}
         >
           {busy ? 'Sending...' : 'Subscribe'}
         </button>
       </div>
-      {status ? <p className={clsx('mt-3 text-sm', isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/70')}>{status}</p> : null}
+      {status ? (
+        <p className={clsx('mt-3 whitespace-pre-line text-sm', isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/70')}>
+          {status}
+        </p>
+      ) : null}
     </section>
   )
 }

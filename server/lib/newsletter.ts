@@ -68,7 +68,10 @@ export async function subscribeNewsletterFromBody(
     },
   )
   if (out.ok === false) return { ok: false, status: out.status, error: out.error }
-  return { ok: true, message: 'Check your email to confirm your subscription.' }
+  return {
+    ok: true,
+    message: 'Check your email for a confirmation link.\nThis might take a while... Go read a review in the meantime!',
+  }
 }
 
 export async function sendNewReviewNewsletter(

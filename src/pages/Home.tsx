@@ -26,6 +26,7 @@ import {
   DEFAULT_DARK_REVIEW_ACCENT_HUE,
   resolveCatalogCardCssVars,
   reviewDarkAccentCssVars,
+  reviewLightAccentCssVars,
 } from '../review/reviewDarkAccent'
 
 type GameCard = {
@@ -93,10 +94,10 @@ function CommentIcon({ className }: { className?: string }) {
 
 function HomeMetricBadges({ game, isLight }: { game: GameCard; isLight: boolean }) {
   const commentCount =
-    typeof game.comment_count === 'number'
-      ? game.comment_count
-      : typeof game.comments?.[0]?.count === 'number'
+    typeof game.comments?.[0]?.count === 'number'
         ? game.comments[0].count
+      : typeof game.comment_count === 'number'
+        ? game.comment_count
         : 0
   return (
     <span
@@ -134,11 +135,11 @@ function MyProjectsPanel({
   return (
     <aside
       className={clsx(
-        'rounded-2xl border p-5',
+        'h-full rounded-2xl border p-5',
         isLight ? 'border-zinc-200 bg-white/80 shadow-sm' : 'border-white/10 bg-white/5',
       )}
     >
-      <h2 className={clsx(homeTheme.fontDisplay, 'text-xl font-semibold', isLight ? 'text-zinc-950' : 'text-[#fff4e4]')}>
+      <h2 className={clsx(homeTheme.fontDisplay, 'text-2xl font-semibold', isLight ? 'text-zinc-950' : 'text-[#fff4e4]')}>
         My Projects
       </h2>
       <div className="mt-4 grid gap-2">
@@ -149,7 +150,8 @@ function MyProjectsPanel({
             target="_blank"
             rel="noopener noreferrer"
             className={clsx(
-              'rounded-lg border px-3 py-2 text-sm font-semibold transition',
+              homeTheme.fontBody,
+              'rounded-lg border px-4 py-2 text-sm font-semibold transition',
               isLight
                 ? 'border-zinc-200 bg-white text-zinc-800 hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent)]'
                 : 'border-white/10 bg-black/10 text-[#f4e9d8] hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]',
@@ -207,6 +209,15 @@ export function Home() {
           setGames([])
           return
         }
+        console.debug(
+          '[GameRev] home engagement counts',
+          (data ?? []).map((game) => ({
+            slug: game.slug,
+            view_count: game.view_count,
+            comment_count: game.comment_count,
+            live_comment_count: game.comments?.[0]?.count,
+          })),
+        )
         setGames((data ?? []) as GameCard[])
       } finally {
         if (!cancelled) setGamesLoading(false)
@@ -239,7 +250,11 @@ export function Home() {
   return (
     <div
       className={clsx(homeTheme.shell, homeTheme.fontBody, 'relative')}
-      style={isLight ? undefined : reviewDarkAccentCssVars(DEFAULT_DARK_REVIEW_ACCENT_HUE)}
+      style={
+        isLight
+          ? reviewLightAccentCssVars(DEFAULT_DARK_REVIEW_ACCENT_HUE)
+          : reviewDarkAccentCssVars(DEFAULT_DARK_REVIEW_ACCENT_HUE)
+      }
     >
       {homeTheme.ambiance === 'anthropic' ? (
         <>
@@ -265,14 +280,14 @@ export function Home() {
           <ReviewModeToggle mode={homeMode} onChange={onHomeModeChange} surface="review" />
         </div>
 
-        <header className="mt-10 grid gap-8 md:mt-14 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] lg:items-start">
-          <div>
+        <header className="mt-10 grid items-stretch gap-8 md:mt-14 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
+          <div className="flex h-full flex-col">
             <h1 className={clsx(homeTheme.fontDisplay, homeTheme.title)}>GameRev</h1>
             <p className={clsx(homeTheme.fontBody, homeTheme.subtitle, 'max-w-2xl')}>
               GameRev is a small catalog of video game reviews
             </p>
-            <NewsletterSignup isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5 max-w-2xl')} />
-            <SuggestionBox isLight={isLight} className={homeTheme.fontBody} />
+            <NewsletterSignup isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5 max-w-md')} />
+            <SuggestionBox isLight={isLight} className={clsx(homeTheme.fontBody, 'lg:mt-auto')} />
           </div>
           <MyProjectsPanel isLight={isLight} homeTheme={homeTheme} />
         </header>

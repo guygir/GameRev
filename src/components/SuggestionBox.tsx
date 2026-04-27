@@ -75,10 +75,10 @@ export function SuggestionBox({ isLight, className }: SuggestionBoxProps) {
           setIsOpen(true)
         }}
         className={clsx(
-          'mt-5 inline-flex rounded-full border px-4 py-2 text-sm font-semibold transition',
+          'mt-4 inline-flex self-start rounded-lg border px-4 py-2 text-sm font-semibold transition',
           isLight
-            ? 'border-zinc-300 bg-white text-zinc-800 hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent)]'
-            : 'border-white/15 bg-white/5 text-[#f4e9d8] hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]',
+            ? 'border-zinc-200 bg-white text-zinc-800 hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent)]'
+            : 'border-white/10 bg-black/10 text-[#f4e9d8] hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]',
           className,
         )}
       >

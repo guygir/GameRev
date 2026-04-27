@@ -89,8 +89,8 @@ begin
 
   if v_inserted then
     update public.games
-    set view_count = view_count + 1
-    where id = v_game_id;
+    set view_count = public.games.view_count + 1
+    where public.games.id = v_game_id;
   end if;
 
   return query
