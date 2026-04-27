@@ -260,13 +260,13 @@ export function Home() {
 
         <header className="mt-10 grid gap-8 md:mt-14 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] lg:items-start">
           <div>
-            <p className={clsx(homeTheme.fontBody, homeTheme.eyebrow)}>Editorial catalog</p>
-            <h1 className={clsx('mt-6', homeTheme.fontDisplay, homeTheme.title)}>GameRev</h1>
+            <h1 className={clsx(homeTheme.fontDisplay, homeTheme.title)}>GameRev</h1>
             <p className={clsx(homeTheme.fontBody, homeTheme.subtitle, 'max-w-2xl')}>
               GameRev is a small catalog of video game reviews: editorial layouts, a six-stat radar, HowLongToBeat-style
               times, and reader comments—written to be read, not scrolled past.
             </p>
             <SuggestionBox isLight={isLight} className={homeTheme.fontBody} />
+            <NewsletterSignup isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5 max-w-2xl')} />
           </div>
           <MyProjectsPanel isLight={isLight} homeTheme={homeTheme} />
         </header>
@@ -372,21 +372,23 @@ export function Home() {
                             >
                               {g.name}
                             </p>
-                            {coverMeta ? (
-                              <p
-                                className={clsx(
-                                  homeTheme.fontBody,
-                                  'mt-1 text-[10px] font-semibold uppercase tracking-widest text-white/90 sm:text-[11px]',
-                                  catalogSort === 'date' && 'normal-case tracking-normal',
-                                  catalogSort === 'rank' && 'font-mono tracking-normal',
-                                )}
-                              >
-                                {coverMeta}
-                              </p>
-                            ) : null}
-                            <span className="mt-1 flex text-white/90">
+                            <div className="mt-1 flex items-center justify-between gap-2 text-white/90">
+                              {coverMeta ? (
+                                <p
+                                  className={clsx(
+                                    homeTheme.fontBody,
+                                    'min-w-0 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]',
+                                    catalogSort === 'date' && 'normal-case tracking-normal',
+                                    catalogSort === 'rank' && 'font-mono tracking-normal',
+                                  )}
+                                >
+                                  {coverMeta}
+                                </p>
+                              ) : (
+                                <span />
+                              )}
                               <HomeMetricBadges game={g} isLight={false} />
-                            </span>
+                            </div>
                           </div>
                         </>
                       ) : (
@@ -415,22 +417,24 @@ export function Home() {
                           >
                             {g.name}
                           </p>
-                          {coverMeta ? (
-                            <p
-                              className={clsx(
-                                homeTheme.fontBody,
-                                'mt-1 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]',
-                                isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/65',
-                                catalogSort === 'date' && 'normal-case tracking-normal',
-                                catalogSort === 'rank' && 'font-mono tracking-normal',
-                              )}
-                            >
-                              {coverMeta}
-                            </p>
-                          ) : null}
-                          <span className="mt-2 flex">
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            {coverMeta ? (
+                              <p
+                                className={clsx(
+                                  homeTheme.fontBody,
+                                  'min-w-0 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]',
+                                  isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/65',
+                                  catalogSort === 'date' && 'normal-case tracking-normal',
+                                  catalogSort === 'rank' && 'font-mono tracking-normal',
+                                )}
+                              >
+                                {coverMeta}
+                              </p>
+                            ) : (
+                              <span />
+                            )}
                             <HomeMetricBadges game={g} isLight={isLight} />
-                          </span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -501,30 +505,32 @@ export function Home() {
                               >
                                 {g.name}
                               </p>
-                              {coverMeta ? (
-                                <p
-                                  className={clsx(
-                                    homeTheme.fontBody,
-                                    'mt-1 text-[10px] font-semibold text-white/90',
-                                    catalogSort === 'date' && 'normal-case',
-                                    catalogSort === 'rank' && 'font-mono',
-                                  )}
-                                >
-                                  {catalogSort === 'date' ? (
-                                    <>
-                                      <span className="font-semibold uppercase tracking-widest text-white/75">
-                                        Published
-                                      </span>{' '}
-                                      {coverMeta}
-                                    </>
-                                  ) : (
-                                    coverMeta
-                                  )}
-                                </p>
-                              ) : null}
-                              <span className="mt-1 flex text-white/90">
+                              <div className="mt-1 flex items-center justify-between gap-2 text-white/90">
+                                {coverMeta ? (
+                                  <p
+                                    className={clsx(
+                                      homeTheme.fontBody,
+                                      'min-w-0 text-[10px] font-semibold',
+                                      catalogSort === 'date' && 'normal-case',
+                                      catalogSort === 'rank' && 'font-mono',
+                                    )}
+                                  >
+                                    {catalogSort === 'date' ? (
+                                      <>
+                                        <span className="font-semibold uppercase tracking-widest text-white/75">
+                                          Published
+                                        </span>{' '}
+                                        {coverMeta}
+                                      </>
+                                    ) : (
+                                      coverMeta
+                                    )}
+                                  </p>
+                                ) : (
+                                  <span />
+                                )}
                                 <HomeMetricBadges game={g} isLight={false} />
-                              </span>
+                              </div>
                             </div>
                           </>
                         ) : (
@@ -553,35 +559,37 @@ export function Home() {
                             >
                               {g.name}
                             </p>
-                            {coverMeta ? (
-                              <p
-                                className={clsx(
-                                  homeTheme.fontBody,
-                                  'mt-1 text-[10px] font-semibold',
-                                  catalogSort === 'date' && 'normal-case',
-                                  catalogSort === 'rank' && 'font-mono',
-                                )}
-                              >
-                                {catalogSort === 'date' ? (
-                                  <>
-                                    <span
-                                      className={clsx(
-                                        'font-semibold uppercase tracking-widest',
-                                        isLight ? 'text-zinc-500' : 'text-[#f4e9d8]/55',
-                                      )}
-                                    >
-                                      Published
-                                    </span>{' '}
-                                    {coverMeta}
-                                  </>
-                                ) : (
-                                  coverMeta
-                                )}
-                              </p>
-                            ) : null}
-                            <span className="mt-2 flex">
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              {coverMeta ? (
+                                <p
+                                  className={clsx(
+                                    homeTheme.fontBody,
+                                    'min-w-0 text-[10px] font-semibold',
+                                    catalogSort === 'date' && 'normal-case',
+                                    catalogSort === 'rank' && 'font-mono',
+                                  )}
+                                >
+                                  {catalogSort === 'date' ? (
+                                    <>
+                                      <span
+                                        className={clsx(
+                                          'font-semibold uppercase tracking-widest',
+                                          isLight ? 'text-zinc-500' : 'text-[#f4e9d8]/55',
+                                        )}
+                                      >
+                                        Published
+                                      </span>{' '}
+                                      {coverMeta}
+                                    </>
+                                  ) : (
+                                    coverMeta
+                                  )}
+                                </p>
+                              ) : (
+                                <span />
+                              )}
                               <HomeMetricBadges game={g} isLight={isLight} />
-                            </span>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -607,9 +615,6 @@ export function Home() {
                             {g.subtitle}
                           </p>
                         ) : null}
-                        <div className="mt-4">
-                          <HomeMetricBadges game={g} isLight={isLight} />
-                        </div>
                         <span
                           className={clsx(
                             homeTheme.fontBody,
@@ -629,7 +634,6 @@ export function Home() {
             })}
           </ul>
         )}
-        <NewsletterSignup isLight={isLight} className={homeTheme.fontBody} />
       </div>
     </div>
   )

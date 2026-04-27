@@ -11,7 +11,7 @@ type KofiSupportButtonProps = {
 /** Ko-fi link: light = site brand purple (ReviewMode “Light”); dark = review accent vars on parent shell. */
 export function KofiSupportButton({ isLight, className }: KofiSupportButtonProps) {
   return (
-    <div className={clsx('flex justify-start', className)}>
+    <div className={clsx('flex justify-center', className)}>
       <a
         href={KOFI_HREF}
         target="_blank"

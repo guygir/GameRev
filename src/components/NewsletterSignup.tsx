@@ -39,16 +39,16 @@ export function NewsletterSignup({ isLight, className }: NewsletterSignupProps) 
   return (
     <section
       className={clsx(
-        'mt-14 rounded-2xl border p-6',
+        'rounded-2xl border p-6',
         isLight ? 'border-zinc-200 bg-white' : 'border-white/10 bg-white/5',
         className,
       )}
     >
       <h2 className={clsx('text-lg font-semibold', isLight ? 'text-zinc-950' : 'text-[#fff4e4]')}>
-        Get new reviews by email
+        Subscribe
       </h2>
       <p className={clsx('mt-2 text-sm leading-relaxed', isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/70')}>
-        Powered by Buttondown: confirm by email, then get one note when a new review is published. Unsubscribe anytime.
+        Get an email when a new review is up! Unsubscribe anytime.
       </p>
       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         <input
