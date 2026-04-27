@@ -161,7 +161,7 @@ function MyProjectsPanel({
           </a>
         ))}
       </div>
-      <KofiSupportButton isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5')} />
+      <KofiSupportButton isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-6')} />
     </aside>
   )
 }
@@ -287,7 +287,9 @@ export function Home() {
               GameRev is a small catalog of video game reviews
             </p>
             <NewsletterSignup isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5 max-w-sm')} />
-            <SuggestionBox isLight={isLight} className={clsx(homeTheme.fontBody, 'lg:mt-auto')} />
+            <div className="mt-0 lg:mt-auto lg:pt-0">
+              <SuggestionBox isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-0')} />
+            </div>
           </div>
           <MyProjectsPanel isLight={isLight} homeTheme={homeTheme} />
         </header>
