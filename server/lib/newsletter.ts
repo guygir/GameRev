@@ -1,7 +1,7 @@
-import { siteBaseUrl } from './githubGameComments.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 const BUTTONDOWN_API_URL = 'https://api.buttondown.email/v1'
+const DEFAULT_PUBLIC_SITE_URL = 'https://game-rev.vercel.app'
 
 function normalizeEmail(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
@@ -89,14 +89,23 @@ export async function sendNewReviewNewsletter(
   review: { slug: string; name: string; subtitle: string },
 ): Promise<{ ok: true; skipped?: boolean } | { ok: false; error: string }> {
   if (!(env.BUTTONDOWN_API_KEY ?? '').trim()) return { ok: true, skipped: true }
-  const base = siteBaseUrl(env)
+  const base = (env.PUBLIC_SITE_URL ?? env.SITE_URL ?? DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
   const reviewUrl = `${base}/g/${encodeURIComponent(review.slug)}`
   const safeReviewUrl = escapeHtml(reviewUrl)
-  const body = `# ${escapeHtml(review.name)}
+  const body = `<style>
+a { color: #8251ee !important; }
+.newsletter-colophon a, .colophon a, .newsletter-footer a { color: #8251ee !important; }
+</style>
+
+# ${escapeHtml(review.name)}
 
 ${escapeHtml(review.subtitle)}
 
-Read the review: <a href="${safeReviewUrl}" style="color:#8251ee;text-decoration:underline;">${safeReviewUrl}</a>`
+<p>
+  <a href="${safeReviewUrl}" style="display:inline-block;background:#8251ee;color:#ffffff !important;text-decoration:none;border-radius:8px;padding:10px 14px;font-weight:700;">
+    Read the review
+  </a>
+</p>`
   const draft = await buttondownFetch(env, '/emails', {
     subject: `New GameRev review: ${review.name}`,
     body,
