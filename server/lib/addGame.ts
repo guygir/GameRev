@@ -1,6 +1,7 @@
 import { shiftCatalogRanksUpFrom, parseCatalogRankPosition } from './catalogRank.js'
 import { getServiceSupabase } from './supabaseAdmin.js'
 import { slugify } from './slug.js'
+import { sendNewReviewNewsletter } from './newsletter.js'
 import {
   buildReviewedLookup,
   normalizePlayIfLiked,
@@ -20,6 +21,10 @@ type Env = {
   supabaseUrl: string
   serviceRoleKey: string
   addGamePassword: string
+  BUTTONDOWN_API_KEY?: string
+  PUBLIC_SITE_URL?: string
+  SITE_URL?: string
+  VERCEL_URL?: string
 }
 
 function requireEnv(env: Env): string | null {
@@ -176,6 +181,9 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   }
 
   await maybeRefreshPlayIfLikedMutualCluster(sb, gameId, name, playPicks, play_if_liked)
+  void sendNewReviewNewsletter(env, { slug, name, subtitle }).catch(() => {
+    /* Publishing succeeds even if newsletter delivery fails. */
+  })
 
   return { ok: true, slug }
 }

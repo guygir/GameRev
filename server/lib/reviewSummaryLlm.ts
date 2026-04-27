@@ -9,6 +9,18 @@ function sleep(ms: number): Promise<void> {
 
 const GEMINI_TRANSIENT_HTTP = new Set([429, 502, 503])
 
+/** Free-tier / billing quota: retrying other models or backoff usually does not help within the same run. */
+function isGeminiDeveloperQuotaExhausted(status: number, rawText: string): boolean {
+  if (status !== 429) return false
+  const t = rawText.toLowerCase()
+  return (
+    t.includes('generate_content_free_tier') ||
+    t.includes('quota exceeded') ||
+    t.includes('resource_exhausted') ||
+    (t.includes('quota') && t.includes('billing'))
+  )
+}
+
 function shortenGeminiErrorBody(raw: string): string {
   const slice = raw.slice(0, 400).trim()
   try {
@@ -91,7 +103,7 @@ function buildEditorNoteFromSummaryPrompt(gameName: string, summary: string): st
     gameName.trim().length >= 2
       ? `Game title (tone only; do not repeat as a standalone headline): ${JSON.stringify(clip(gameName.trim(), 200))}\n\n`
       : ''
-  return `${nameCtx}You help a solo game-review editor write a single punchy line for the top of the public review.
+  return `${nameCtx}You help a solo game-review editor write a single punchy, personal and unoffical line for the top of the public review.
 
 Source capsule / summary (distill this; do not invent plot beats beyond what is already implied):
 ${JSON.stringify(clip(summary, 11_000))}
@@ -106,18 +118,22 @@ Return ONLY valid JSON with exactly this shape:
 function heuristicEditorNoteFromSummary(summary: string): string {
   const t = summary.replace(/\s+/g, ' ').trim()
   if (!t) return ''
-  const parts = t.split(/(?<=[.!?])\s+/)
-  let line = (parts[0] ?? t).trim()
-  if (line.length < 24 && parts.length > 1) {
-    line = `${parts[0]!.trim()} ${parts[1]!.trim()}`.trim()
+  const parts = t.split(/(?<=[.!?])\s+/).map((p) => p.trim()).filter(Boolean)
+  let line: string
+  if (parts.length === 0) {
+    line = t
+  } else if (parts.length <= 3) {
+    line = parts.join(' ')
+  } else {
+    line = parts.slice(0, 3).join(' ')
   }
   line = line.replace(/^["'“”]+|["'“”]+$/g, '').trim()
   const out = clip(line, 600)
-  return out || clip(t, 220)
+  return out || clip(t, 600)
 }
 
 async function editorNoteOpenAi(key: string, prompt: string): Promise<string | null> {
-  const max_tokens = 220
+  const max_tokens = 900
   const ac = new AbortController()
   const t = setTimeout(() => ac.abort(), 45_000)
   try {
@@ -161,8 +177,8 @@ async function editorNoteOpenAi(key: string, prompt: string): Promise<string | n
 
 async function editorNoteGemini(key: string, models: string[], prompt: string): Promise<string | null> {
   let lastErrorBody = ''
-  const maxAttemptsPerModel = 3
-  const maxOutputTokens = 512
+  const maxAttemptsPerModel = 5
+  const maxOutputTokens = 1024
 
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`
@@ -188,6 +204,9 @@ async function editorNoteGemini(key: string, models: string[], prompt: string): 
         if (!res.ok) {
           lastErrorBody = shortenGeminiErrorBody(rawText)
           if (res.status === 404) break attempts
+          if (isGeminiDeveloperQuotaExhausted(res.status, rawText)) {
+            throw new Error(`Gemini: ${lastErrorBody}`)
+          }
           if (GEMINI_TRANSIENT_HTTP.has(res.status) && attempt < maxAttemptsPerModel - 1) {
             await sleep(700 * 2 ** attempt + Math.floor(Math.random() * 250))
             continue attempts
@@ -409,16 +428,32 @@ export async function generateReviewCapsuleSummary(
 export type EditorNoteFromSummaryOk = {
   ok: true
   editorNote: string
+  /** True when OpenAI/Gemini did not return usable JSON after all retries (local clip from summary). */
   usedHeuristicFallback: boolean
+  /** When heuristic ran after cloud misses: condensed error trail for debugging. */
+  cloudTrace?: string
+}
+
+export type EditorNoteFromSummaryOpts = {
+  geminiModel?: string | null
+  /**
+   * When false, returns `{ ok: false }` if no cloud model produced a parseable `editorNote` (no heuristic).
+   * Use for CLI backfills that must be AI-only.
+   */
+  allowHeuristic?: boolean
+  /** Full OpenAI attempt + full Gemini model rotation counts as one round. Default 4. */
+  cloudRetryRounds?: number
+  /** Delay before each retry round after the first (ms). Default 2000. */
+  retryBackoffMs?: number
 }
 
 /**
- * One-sentence editor kicker distilled from the capsule summary (OpenAI if configured, else Gemini; heuristic fallback).
+ * One-sentence editor kicker distilled from the capsule summary (OpenAI if configured, else Gemini; optional heuristic).
  */
 export async function generateEditorNoteFromSummary(
   env: ServerProcessEnv,
   input: { gameName: string; summary: string },
-  opts?: { geminiModel?: string | null },
+  opts?: EditorNoteFromSummaryOpts,
 ): Promise<EditorNoteFromSummaryOk | { ok: false; error: string }> {
   const gameName = input.gameName.trim()
   const summary = input.summary.trim()
@@ -429,36 +464,65 @@ export async function generateEditorNoteFromSummary(
   const prompt = buildEditorNoteFromSummaryPrompt(gameName, summary)
   const openai = (env.OPENAI_API_KEY ?? '').trim()
   const gemini = (env.GEMINI_API_KEY ?? '').trim()
+  const allowHeuristic = opts?.allowHeuristic !== false
+  const rounds = Math.max(1, Math.min(12, opts?.cloudRetryRounds ?? 4))
+  const backoffMs = Math.max(0, Math.min(60_000, opts?.retryBackoffMs ?? 2000))
 
-  const fallback = (): EditorNoteFromSummaryOk => ({
+  const heuristicOk = (cloudTrace: string): EditorNoteFromSummaryOk => ({
     ok: true,
     editorNote: heuristicEditorNoteFromSummary(summary),
     usedHeuristicFallback: true,
+    cloudTrace: cloudTrace.slice(0, 2000),
   })
 
   if (!openai && !gemini) {
-    return fallback()
+    if (!allowHeuristic) {
+      return { ok: false, error: 'No OPENAI_API_KEY or GEMINI_API_KEY on the server (strict mode: no heuristic).' }
+    }
+    return heuristicOk('No API keys configured; heuristic only.')
   }
 
-  if (openai) {
-    try {
-      const out = await editorNoteOpenAi(openai, prompt)
-      if (out) return { ok: true, editorNote: out, usedHeuristicFallback: false }
-    } catch {
-      if (!gemini) return fallback()
+  const traces: string[] = []
+  const geminiModels = () => geminiModelsToTry(env, opts?.geminiModel ?? null)
+
+  for (let r = 0; r < rounds; r++) {
+    let stopRounds = false
+    if (r > 0 && backoffMs > 0) await sleep(backoffMs)
+    const label = `Round ${r + 1}/${rounds}`
+
+    if (openai) {
+      try {
+        const out = await editorNoteOpenAi(openai, prompt)
+        if (out) return { ok: true, editorNote: out, usedHeuristicFallback: false }
+        traces.push(`${label}: OpenAI returned empty or unparseable editorNote JSON.`)
+      } catch (e) {
+        traces.push(`${label}: OpenAI ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+
+    if (gemini) {
+      try {
+        const out = await editorNoteGemini(gemini, geminiModels(), prompt)
+        if (out) return { ok: true, editorNote: out, usedHeuristicFallback: false }
+        traces.push(`${label}: Gemini returned empty or unparseable editorNote JSON.`)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        traces.push(`${label}: Gemini ${msg}`)
+        if (isGeminiDeveloperQuotaExhausted(429, msg)) stopRounds = true
+      }
+    }
+
+    if (stopRounds) break
+  }
+
+  const trace = traces.length ? traces.join(' \u00bb ') : 'Cloud models did not return usable JSON.'
+  if (!allowHeuristic) {
+    return {
+      ok: false,
+      error: `Cloud retries exhausted (${rounds} round(s), OpenAI + Gemini each). ${trace}`,
     }
   }
-
-  if (gemini) {
-    try {
-      const out = await editorNoteGemini(gemini, geminiModelsToTry(env, opts?.geminiModel ?? null), prompt)
-      if (out) return { ok: true, editorNote: out, usedHeuristicFallback: false }
-    } catch {
-      /* fall through */
-    }
-  }
-
-  return fallback()
+  return heuristicOk(trace)
 }
 
 export type ReviewSummaryEnglishAdjustInput = {

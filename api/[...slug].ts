@@ -38,9 +38,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     method: req.method || 'GET',
     pathname: url.pathname,
     searchParams: url.searchParams,
+    headers: req.headers,
     jsonBody,
     env: process.env,
   })
 
+  if (out.headers) {
+    for (const [k, v] of Object.entries(out.headers)) {
+      res.setHeader(k, v)
+    }
+  }
   res.status(out.status).json(out.body)
 }

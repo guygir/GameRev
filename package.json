@@ -10,7 +10,11 @@
     "preview": "vite preview",
     "vercel:list-functions": "node scripts/list-vercel-api-routes.mjs",
     "audit:play-if-liked": "node scripts/audit-play-if-liked.mjs",
-    "audit:play-if-liked:fix": "node scripts/audit-play-if-liked.mjs --fix"
+    "audit:play-if-liked:fix": "node scripts/audit-play-if-liked.mjs --fix",
+    "backfill:editor-notes": "tsx scripts/backfill-editor-notes.ts",
+    "backfill:editor-notes:write": "tsx scripts/backfill-editor-notes.ts --write",
+    "backfill:editor-notes:soft": "tsx scripts/backfill-editor-notes.ts --allow-heuristic",
+    "backfill:editor-notes:soft:write": "tsx scripts/backfill-editor-notes.ts --allow-heuristic --write"
   },
   "dependencies": {
     "@micamerzeau/howlongtobeat": "^1.8.1",
@@ -37,6 +41,7 @@
     "globals": "^17.4.0",
     "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
+    "tsx": "^4.21.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",
     "vite": "^8.0.4"

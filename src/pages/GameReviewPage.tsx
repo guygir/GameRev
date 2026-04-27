@@ -47,6 +47,33 @@ function isGameStats(raw: unknown): raw is GameStats {
   return true
 }
 
+function getOrCreateVisitorKey(): string | null {
+  try {
+    const existing = window.localStorage.getItem('gamerev:visitor-key')
+    if (existing && /^[A-Za-z0-9:_-]{16,128}$/.test(existing)) return existing
+    const next =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+    window.localStorage.setItem('gamerev:visitor-key', next)
+    return next
+  } catch {
+    return null
+  }
+}
+
+function hasTrackedReviewToday(slug: string): boolean {
+  try {
+    const key = `gamerev:viewed:${slug}`
+    const today = new Date().toISOString().slice(0, 10)
+    if (window.localStorage.getItem(key) === today) return true
+    window.localStorage.setItem(key, today)
+    return false
+  } catch {
+    return false
+  }
+}
+
 export function GameReviewPage() {
   const { slug } = useParams()
   const [params, setParams] = useSearchParams()
@@ -203,6 +230,20 @@ export function GameReviewPage() {
       cancelled = true
     }
   }, [sb, slug])
+
+  useEffect(() => {
+    if (!slug || !gameId || loading || error) return
+    if (hasTrackedReviewToday(slug)) return
+    const visitorKey = getOrCreateVisitorKey()
+    if (!visitorKey) return
+    void fetch('/api/review-view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, visitorKey }),
+    }).catch(() => {
+      /* Analytics should never affect reading the review. */
+    })
+  }, [error, gameId, loading, slug])
 
   const setMode = useCallback(
     (next: ReviewMode) => {

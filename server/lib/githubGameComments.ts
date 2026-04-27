@@ -4,14 +4,14 @@ import type { ServerProcessEnv } from './serverEnv.js'
 const GH_ACCEPT = 'application/vnd.github+json'
 const GH_API_VERSION = '2022-11-28'
 
-function parseRepo(raw: string): { owner: string; repo: string } | null {
+export function parseGithubRepo(raw: string): { owner: string; repo: string } | null {
   const s = raw.trim()
   const i = s.indexOf('/')
   if (i <= 0 || i === s.length - 1) return null
   return { owner: s.slice(0, i), repo: s.slice(i + 1) }
 }
 
-function siteBaseUrl(env: ServerProcessEnv): string {
+export function siteBaseUrl(env: ServerProcessEnv): string {
   const explicit = (env.PUBLIC_SITE_URL ?? env.SITE_URL ?? '').trim().replace(/\/+$/, '')
   if (explicit) return explicit
   const v = (env.VERCEL_URL ?? '').trim()
@@ -19,7 +19,7 @@ function siteBaseUrl(env: ServerProcessEnv): string {
   return 'http://localhost:5173'
 }
 
-async function ghFetch(
+export async function ghFetch(
   token: string,
   path: string,
   init: RequestInit,
@@ -60,7 +60,7 @@ export async function syncReaderCommentToGithub(
   if (!token || !repoRaw) {
     return { ok: true, skipped: true }
   }
-  const repo = parseRepo(repoRaw)
+  const repo = parseGithubRepo(repoRaw)
   if (!repo) {
     return { ok: false, error: 'Invalid GITHUB_COMMENTS_REPO (expected owner/repo).' }
   }

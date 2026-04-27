@@ -11,9 +11,14 @@ function readBody(req: IncomingMessage): Promise<string> {
   })
 }
 
-function sendJson(res: ServerResponse, status: number, body: unknown) {
+function sendJson(res: ServerResponse, status: number, body: unknown, headers?: Record<string, string>) {
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  if (headers) {
+    for (const [k, v] of Object.entries(headers)) {
+      res.setHeader(k, v)
+    }
+  }
   res.end(JSON.stringify(body))
 }
 
@@ -51,10 +56,11 @@ function installApiRoutes(middlewares: Connect.Server, env: Record<string, strin
         method,
         pathname: url.pathname,
         searchParams: url.searchParams,
+        headers: req.headers,
         jsonBody,
         env: { ...process.env, ...env },
       })
-      sendJson(res, out.status, out.body)
+      sendJson(res, out.status, out.body, out.headers)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Server error'
       const status = /not configured/i.test(message) ? 503 : 500

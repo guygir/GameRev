@@ -7,8 +7,11 @@ import { fetchIgdbGenreMatches } from './igdbGenres.js'
 import { getServiceSupabase } from './supabaseAdmin.js'
 import { sampleCoverAccentFromUrl } from './sampleCoverAccentFromUrl.js'
 import { syncReaderCommentToGithub } from './githubGameComments.js'
+import { createGithubSuggestionFromBody } from './githubSuggestions.js'
 import { deleteReaderCommentFromBody } from './deleteReaderComment.js'
 import { fetchSteamVisibility } from './steamPopularity.js'
+import { recordReviewViewFromBody } from './reviewViews.js'
+import { subscribeNewsletterFromBody } from './newsletter.js'
 import { runEditorLookupBundle } from './editorLookupBundle.js'
 import {
   adjustReviewSummaryEnglishLevel,
@@ -25,12 +28,13 @@ export type GamerevApiHandlerInput = {
   method: string
   pathname: string
   searchParams: URLSearchParams
+  headers?: Record<string, string | string[] | undefined>
   /** Parsed JSON for POST; omit for GET. */
   jsonBody?: unknown
   env: ServerProcessEnv
 }
 
-export type GamerevApiHandlerResult = { status: number; body: unknown }
+export type GamerevApiHandlerResult = { status: number; body: unknown; headers?: Record<string, string> }
 
 function normalizePath(pathname: string): { route: string } | { error: GamerevApiHandlerResult } {
   const path = pathname.replace(/\/+$/, '') || '/'
@@ -105,6 +109,10 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         supabaseUrl: env.VITE_SUPABASE_URL ?? env.SUPABASE_URL ?? '',
         serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY ?? '',
         addGamePassword: env.ADD_GAME_PASSWORD ?? '',
+        BUTTONDOWN_API_KEY: env.BUTTONDOWN_API_KEY,
+        PUBLIC_SITE_URL: env.PUBLIC_SITE_URL,
+        SITE_URL: env.SITE_URL,
+        VERCEL_URL: env.VERCEL_URL,
       })
       if (out.ok === false) return { status: out.status, body: { error: out.error } }
       return { status: 200, body: { slug: out.slug } }
@@ -130,6 +138,33 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       })
       if (out.ok === false) return { status: out.status, body: { error: out.error } }
       return { status: 200, body: { ok: true } }
+    }
+
+    if (method === 'POST' && route === 'suggestions') {
+      const out = await createGithubSuggestionFromBody(env, jsonBody ?? {}, input.headers)
+      if (out.ok === false) {
+        return { status: out.status, body: { success: false, error: out.error }, headers: out.headers }
+      }
+      return { status: 200, body: { success: true, issueUrl: out.issueUrl }, headers: out.headers }
+    }
+
+    if (method === 'POST' && route === 'review-view') {
+      const out = await recordReviewViewFromBody(
+        jsonBody ?? {},
+        {
+          supabaseUrl: env.VITE_SUPABASE_URL ?? env.SUPABASE_URL ?? '',
+          serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+        },
+        input.headers,
+      )
+      if (out.ok === false) return { status: out.status, body: { error: out.error } }
+      return { status: 200, body: { viewCount: out.viewCount, inserted: out.inserted } }
+    }
+
+    if (method === 'POST' && route === 'newsletter-subscribe') {
+      const out = await subscribeNewsletterFromBody(jsonBody ?? {}, env)
+      if (out.ok === false) return { status: out.status, body: { error: out.error } }
+      return { status: 200, body: { ok: true, message: out.message } }
     }
 
     if (method === 'GET' && route === 'steam-visibility') {
@@ -236,16 +271,28 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         gameName?: unknown
         summary?: unknown
         geminiModel?: unknown
+        /** When true: no heuristic; more retries; 422 if cloud never returns usable JSON. */
+        strictCloud?: unknown
       }
       const gameName = typeof body.gameName === 'string' ? body.gameName : ''
       const summary = typeof body.summary === 'string' ? body.summary : ''
       const geminiModel =
         typeof body.geminiModel === 'string' && body.geminiModel.trim() ? body.geminiModel.trim() : undefined
-      const out = await generateEditorNoteFromSummary(env, { gameName, summary }, { geminiModel })
+      const strictCloud = body.strictCloud === true
+      const out = await generateEditorNoteFromSummary(env, { gameName, summary }, {
+        geminiModel,
+        allowHeuristic: !strictCloud,
+        cloudRetryRounds: strictCloud ? 8 : 4,
+        retryBackoffMs: strictCloud ? 2500 : 2000,
+      })
       if (out.ok === false) return { status: 422, body: { error: out.error } }
       return {
         status: 200,
-        body: { editorNote: out.editorNote, usedHeuristicFallback: out.usedHeuristicFallback },
+        body: {
+          editorNote: out.editorNote,
+          usedHeuristicFallback: out.usedHeuristicFallback,
+          ...(out.cloudTrace ? { cloudTrace: out.cloudTrace } : {}),
+        },
       }
     }
 

@@ -6,6 +6,8 @@ import { MockNav } from '../components/MockNav'
 import { HomeCatalogLayoutToggle } from '../components/HomeCatalogLayoutToggle'
 import { HomeCatalogSortToggle } from '../components/HomeCatalogSortToggle'
 import { ReviewModeToggle } from '../components/ReviewModeToggle'
+import { SuggestionBox } from '../components/SuggestionBox'
+import { NewsletterSignup } from '../components/NewsletterSignup'
 import { formatReviewPublishedLabel } from '../lib/formatReviewPublished'
 import {
   readHomeCatalogLayoutPreference,
@@ -36,6 +38,8 @@ type GameCard = {
   accent_gray_level: number | null
   created_at: string
   catalog_rank: number | null
+  view_count: number | null
+  comment_count: number | null
 }
 
 /** Second line on catalog cover: publish date (date sort) or #rank (rank sort). */
@@ -44,6 +48,113 @@ function catalogCoverMetaLine(sort: HomeCatalogSort, g: GameCard): string | null
     return typeof g.catalog_rank === 'number' && g.catalog_rank >= 1 ? `#${g.catalog_rank}` : null
   }
   return formatReviewPublishedLabel(g.created_at)
+}
+
+function compactCount(n: number | null | undefined): string {
+  const v = typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1)}m`
+  if (v >= 1000) return `${(v / 1000).toFixed(v >= 10_000 ? 0 : 1)}k`
+  return String(v)
+}
+
+function EyeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path
+        d="M2.5 10s2.6-4.5 7.5-4.5 7.5 4.5 7.5 4.5-2.6 4.5-7.5 4.5S2.5 10 2.5 10Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 12.25A2.25 2.25 0 1 0 10 7.75a2.25 2.25 0 0 0 0 4.5Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+    </svg>
+  )
+}
+
+function CommentIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path
+        d="M4.2 4.5h11.6v8.2H8.1L4.2 16V4.5Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function HomeMetricBadges({ game, isLight }: { game: GameCard; isLight: boolean }) {
+  return (
+    <span
+      className={clsx(
+        'inline-flex items-center gap-2 text-[11px] font-semibold tabular-nums',
+        isLight ? 'text-zinc-600' : 'text-[#f4e9d8]/75',
+      )}
+    >
+      <span className="inline-flex items-center gap-1" title="Views">
+        <EyeIcon className="h-3.5 w-3.5" />
+        {compactCount(game.view_count)}
+      </span>
+      <span className="inline-flex items-center gap-1" title="Comments">
+        <CommentIcon className="h-3.5 w-3.5" />
+        {compactCount(game.comment_count)}
+      </span>
+    </span>
+  )
+}
+
+const PROJECT_LINKS = [
+  { label: 'Holdemle - Poker Wordle', href: 'https://holdemle.vercel.app' },
+  { label: 'Riftle - Riftbound Wordle', href: 'https://rif-trade.vercel.app' },
+  { label: 'Set Hunter - Roguelike TCG', href: 'https://set-hunter-game.vercel.app' },
+  { label: 'Itch.io Profile', href: 'https://guygir.itch.io' },
+] as const
+
+function MyProjectsPanel({
+  isLight,
+  homeTheme,
+}: {
+  isLight: boolean
+  homeTheme: ReturnType<typeof getReviewTheme>
+}) {
+  return (
+    <aside
+      className={clsx(
+        'rounded-2xl border p-5',
+        isLight ? 'border-zinc-200 bg-white/80 shadow-sm' : 'border-white/10 bg-white/5',
+      )}
+    >
+      <h2 className={clsx(homeTheme.fontDisplay, 'text-xl font-semibold', isLight ? 'text-zinc-950' : 'text-[#fff4e4]')}>
+        My Projects
+      </h2>
+      <div className="mt-4 grid gap-2">
+        {PROJECT_LINKS.map((p) => (
+          <a
+            key={p.href}
+            href={p.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={clsx(
+              'rounded-lg border px-3 py-2 text-sm font-semibold transition',
+              isLight
+                ? 'border-zinc-200 bg-white text-zinc-800 hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent)]'
+                : 'border-white/10 bg-black/10 text-[#f4e9d8] hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]',
+            )}
+          >
+            {p.label}
+          </a>
+        ))}
+      </div>
+      <KofiSupportButton isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5')} />
+    </aside>
+  )
 }
 
 export function Home() {
@@ -76,7 +187,7 @@ export function Home() {
         const q = sb
           .from('games')
           .select(
-            'slug, name, subtitle, cover_image_url, accent_hue, accent_preset, accent_gray_level, created_at, catalog_rank',
+            'slug, name, subtitle, cover_image_url, accent_hue, accent_preset, accent_gray_level, created_at, catalog_rank, view_count, comment_count',
           )
         const { data, error } = await (
           catalogSort === 'rank'
@@ -147,14 +258,17 @@ export function Home() {
           <ReviewModeToggle mode={homeMode} onChange={onHomeModeChange} surface="review" />
         </div>
 
-        <header className="mt-10 md:mt-14">
-          <p className={clsx(homeTheme.fontBody, homeTheme.eyebrow)}>Editorial catalog</p>
-          <h1 className={clsx('mt-6', homeTheme.fontDisplay, homeTheme.title)}>GameRev</h1>
-          <p className={clsx(homeTheme.fontBody, homeTheme.subtitle, 'max-w-2xl')}>
-            GameRev is a small catalog of video game reviews: editorial layouts, a six-stat radar, HowLongToBeat-style
-            times, and reader comments—written to be read, not scrolled past.
-          </p>
-          <KofiSupportButton isLight={isLight} className={homeTheme.fontBody} />
+        <header className="mt-10 grid gap-8 md:mt-14 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] lg:items-start">
+          <div>
+            <p className={clsx(homeTheme.fontBody, homeTheme.eyebrow)}>Editorial catalog</p>
+            <h1 className={clsx('mt-6', homeTheme.fontDisplay, homeTheme.title)}>GameRev</h1>
+            <p className={clsx(homeTheme.fontBody, homeTheme.subtitle, 'max-w-2xl')}>
+              GameRev is a small catalog of video game reviews: editorial layouts, a six-stat radar, HowLongToBeat-style
+              times, and reader comments—written to be read, not scrolled past.
+            </p>
+            <SuggestionBox isLight={isLight} className={homeTheme.fontBody} />
+          </div>
+          <MyProjectsPanel isLight={isLight} homeTheme={homeTheme} />
         </header>
 
         <div className="mt-14 flex flex-wrap items-end justify-between gap-3">
@@ -270,6 +384,9 @@ export function Home() {
                                 {coverMeta}
                               </p>
                             ) : null}
+                            <span className="mt-1 flex text-white/90">
+                              <HomeMetricBadges game={g} isLight={false} />
+                            </span>
                           </div>
                         </>
                       ) : (
@@ -311,6 +428,9 @@ export function Home() {
                               {coverMeta}
                             </p>
                           ) : null}
+                          <span className="mt-2 flex">
+                            <HomeMetricBadges game={g} isLight={isLight} />
+                          </span>
                         </div>
                       )}
                     </div>
@@ -402,6 +522,9 @@ export function Home() {
                                   )}
                                 </p>
                               ) : null}
+                              <span className="mt-1 flex text-white/90">
+                                <HomeMetricBadges game={g} isLight={false} />
+                              </span>
                             </div>
                           </>
                         ) : (
@@ -456,6 +579,9 @@ export function Home() {
                                 )}
                               </p>
                             ) : null}
+                            <span className="mt-2 flex">
+                              <HomeMetricBadges game={g} isLight={isLight} />
+                            </span>
                           </div>
                         )}
                       </div>
@@ -481,6 +607,9 @@ export function Home() {
                             {g.subtitle}
                           </p>
                         ) : null}
+                        <div className="mt-4">
+                          <HomeMetricBadges game={g} isLight={isLight} />
+                        </div>
                         <span
                           className={clsx(
                             homeTheme.fontBody,
@@ -500,6 +629,7 @@ export function Home() {
             })}
           </ul>
         )}
+        <NewsletterSignup isLight={isLight} className={homeTheme.fontBody} />
       </div>
     </div>
   )

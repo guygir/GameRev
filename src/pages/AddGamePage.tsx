@@ -246,6 +246,7 @@ export function AddGamePage() {
   const [editorNoteFromSummaryBusy, setEditorNoteFromSummaryBusy] = useState(false)
   const [editorNoteFromSummaryErr, setEditorNoteFromSummaryErr] = useState<string | null>(null)
   const [editorNoteFromSummaryNonAi, setEditorNoteFromSummaryNonAi] = useState(false)
+  const [editorNoteCloudTrace, setEditorNoteCloudTrace] = useState<string | null>(null)
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [tagDraft, setTagDraft] = useState('')
 
@@ -330,6 +331,7 @@ export function AddGamePage() {
     setEditorNoteFromSummaryErr(null)
     setEditorNoteFromSummaryBusy(false)
     setEditorNoteFromSummaryNonAi(false)
+    setEditorNoteCloudTrace(null)
     setSteamAppId(null)
     setSteamReviewCount(null)
     setVisibilityScore(null)
@@ -862,6 +864,7 @@ export function AddGamePage() {
     setEditorNoteFromSummaryBusy(true)
     setEditorNoteFromSummaryErr(null)
     setEditorNoteFromSummaryNonAi(false)
+    setEditorNoteCloudTrace(null)
     try {
       const res = await fetch('/api/editor-note-from-summary', {
         method: 'POST',
@@ -875,6 +878,7 @@ export function AddGamePage() {
       const json = (await res.json()) as {
         editorNote?: string
         usedHeuristicFallback?: boolean
+        cloudTrace?: string
         error?: string
       }
       if (!res.ok) throw new Error(json.error ?? 'Editor note generation failed')
@@ -882,6 +886,9 @@ export function AddGamePage() {
       if (!line) throw new Error('Empty editor note from server')
       setEditorNoteText(line)
       setEditorNoteFromSummaryNonAi(json.usedHeuristicFallback === true)
+      setEditorNoteCloudTrace(
+        typeof json.cloudTrace === 'string' && json.cloudTrace.trim() ? json.cloudTrace.trim() : null,
+      )
     } catch (e) {
       setEditorNoteFromSummaryErr(e instanceof Error ? e.message : 'Editor note generation failed')
     } finally {
@@ -2887,9 +2894,14 @@ export function AddGamePage() {
           </div>
           {editorNoteFromSummaryErr ? <p className="text-xs text-rose-300">{editorNoteFromSummaryErr}</p> : null}
           {editorNoteFromSummaryNonAi ? (
-            <p className="rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
-              This line was filled using heuristic fallback, not cloud AI output.
-            </p>
+            <div className="rounded-md border border-rose-500/50 bg-rose-950/40 px-3 py-2 text-xs font-semibold text-rose-200">
+              <p>This line was filled using heuristic fallback, not cloud AI output.</p>
+              {editorNoteCloudTrace ? (
+                <p className="mt-2 font-mono text-[11px] font-normal leading-relaxed text-rose-100/90">
+                  {editorNoteCloudTrace}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <textarea
             value={editorNoteText}
