@@ -286,7 +286,7 @@ export function Home() {
             <p className={clsx(homeTheme.fontBody, homeTheme.subtitle, 'max-w-2xl')}>
               GameRev is a small catalog of video game reviews
             </p>
-            <NewsletterSignup isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5 max-w-sm')} />
+            <NewsletterSignup isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5 max-w-lg')} />
             <div className="mt-0 lg:mt-auto lg:pt-0">
               <SuggestionBox isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-0')} />
             </div>
