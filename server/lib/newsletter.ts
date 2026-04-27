@@ -20,6 +20,30 @@ function escapeHtml(raw: string): string {
     .replaceAll("'", '&#39;')
 }
 
+export function buildNewReviewNewsletterDraft(
+  env: { PUBLIC_SITE_URL?: string; SITE_URL?: string },
+  review: { slug: string; name: string; subtitle: string },
+): { subject: string; body: string; reviewUrl: string } {
+  const base = (env.PUBLIC_SITE_URL ?? env.SITE_URL ?? DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
+  const reviewUrl = `${base}/g/${encodeURIComponent(review.slug)}`
+  const safeReviewUrl = escapeHtml(reviewUrl)
+  return {
+    subject: `New GameRev review: ${review.name}`,
+    reviewUrl,
+    body: `<style>
+a { color: #8251ee !important; }
+.newsletter-colophon a, .colophon a, .newsletter-footer a { color: #8251ee !important; }
+</style>
+
+# ${escapeHtml(review.name)}
+
+${escapeHtml(review.subtitle)}
+
+Read the review:<br>
+<a href="${safeReviewUrl}" style="color:#8251ee !important;text-decoration:underline;">${safeReviewUrl}</a>`,
+  }
+}
+
 async function buttondownFetch(
   env: ServerProcessEnv,
   path: string,
@@ -89,26 +113,10 @@ export async function sendNewReviewNewsletter(
   review: { slug: string; name: string; subtitle: string },
 ): Promise<{ ok: true; skipped?: boolean } | { ok: false; error: string }> {
   if (!(env.BUTTONDOWN_API_KEY ?? '').trim()) return { ok: true, skipped: true }
-  const base = (env.PUBLIC_SITE_URL ?? env.SITE_URL ?? DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
-  const reviewUrl = `${base}/g/${encodeURIComponent(review.slug)}`
-  const safeReviewUrl = escapeHtml(reviewUrl)
-  const body = `<style>
-a { color: #8251ee !important; }
-.newsletter-colophon a, .colophon a, .newsletter-footer a { color: #8251ee !important; }
-</style>
-
-# ${escapeHtml(review.name)}
-
-${escapeHtml(review.subtitle)}
-
-<p>
-  <a href="${safeReviewUrl}" style="display:inline-block;background:#8251ee;color:#ffffff !important;text-decoration:none;border-radius:8px;padding:10px 14px;font-weight:700;">
-    Read the review
-  </a>
-</p>`
+  const draftPayload = buildNewReviewNewsletterDraft(env, review)
   const draft = await buttondownFetch(env, '/emails', {
-    subject: `New GameRev review: ${review.name}`,
-    body,
+    subject: draftPayload.subject,
+    body: draftPayload.body,
     status: 'draft',
   })
   if (draft.ok === false) return { ok: false, error: draft.error }
