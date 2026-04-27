@@ -42,7 +42,7 @@ export function NewsletterSignup({ isLight, className }: NewsletterSignupProps) 
   return (
     <section
       className={clsx(
-        'rounded-2xl border p-5 shadow-sm',
+        'rounded-2xl border p-4 shadow-sm',
         isLight ? 'border-zinc-200 bg-white/80' : 'border-white/10 bg-white/5',
         className,
       )}
@@ -72,10 +72,10 @@ export function NewsletterSignup({ isLight, className }: NewsletterSignupProps) 
           onClick={() => void submit()}
           disabled={busy}
           className={clsx(
-            'rounded-lg border px-4 py-2 text-sm font-semibold transition disabled:opacity-50',
+            'rounded-lg px-4 py-2 text-sm font-semibold shadow-lg transition-colors disabled:opacity-50',
             isLight
-              ? 'border-zinc-200 bg-white text-zinc-800 hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent)]'
-              : 'border-white/10 bg-black/10 text-[#f4e9d8] hover:border-[color:var(--review-accent)] hover:text-[color:var(--review-accent-bright)]',
+              ? 'bg-brand text-white shadow-[0_8px_28px_-6px_rgba(130,81,238,0.45)] hover:bg-brand-hover'
+              : 'border border-[color:var(--review-accent-border)] bg-[color:var(--review-accent-surface)] text-[color:var(--review-accent-bright)] shadow-[0_0_32px_-10px_var(--review-accent-glow)] hover:brightness-110',
           )}
         >
           {busy ? 'Sending...' : 'Subscribe'}
