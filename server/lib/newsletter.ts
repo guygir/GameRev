@@ -11,16 +11,26 @@ function normalizeEmail(raw: unknown): string | null {
   return email
 }
 
+function escapeHtml(raw: string): string {
+  return raw
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 async function buttondownFetch(
   env: ServerProcessEnv,
   path: string,
   body: unknown,
   extraHeaders?: Record<string, string>,
+  method: 'POST' | 'PATCH' = 'POST',
 ): Promise<{ ok: true; json: unknown } | { ok: false; status: number; error: string }> {
   const key = (env.BUTTONDOWN_API_KEY ?? '').trim()
   if (!key) return { ok: false, status: 503, error: 'BUTTONDOWN_API_KEY is not configured.' }
   const res = await fetch(`${BUTTONDOWN_API_URL}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       Authorization: `Token ${key}`,
       'Content-Type': 'application/json',
@@ -81,17 +91,23 @@ export async function sendNewReviewNewsletter(
   if (!(env.BUTTONDOWN_API_KEY ?? '').trim()) return { ok: true, skipped: true }
   const base = siteBaseUrl(env)
   const reviewUrl = `${base}/g/${encodeURIComponent(review.slug)}`
-  const body = `<!-- buttondown-editor-mode: plaintext -->
-# ${review.name}
+  const safeReviewUrl = escapeHtml(reviewUrl)
+  const body = `# ${escapeHtml(review.name)}
 
-${review.subtitle}
+${escapeHtml(review.subtitle)}
 
-Read the review: ${reviewUrl}`
-  const out = await buttondownFetch(env, '/emails', {
+Read the review: <a href="${safeReviewUrl}" style="color:#8251ee;text-decoration:underline;">${safeReviewUrl}</a>`
+  const draft = await buttondownFetch(env, '/emails', {
     subject: `New GameRev review: ${review.name}`,
     body,
-    status: 'about_to_send',
+    status: 'draft',
   })
-  if (out.ok === false) return { ok: false, error: out.error }
+  if (draft.ok === false) return { ok: false, error: draft.error }
+
+  const emailId = typeof (draft.json as { id?: unknown } | null)?.id === 'string' ? (draft.json as { id: string }).id : ''
+  if (!emailId) return { ok: false, error: 'Buttondown did not return a draft email id.' }
+
+  const send = await buttondownFetch(env, `/emails/${encodeURIComponent(emailId)}`, { status: 'about_to_send' }, undefined, 'PATCH')
+  if (send.ok === false) return { ok: false, error: send.error }
   return { ok: true }
 }
