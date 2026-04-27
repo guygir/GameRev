@@ -181,16 +181,17 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   }
 
   await maybeRefreshPlayIfLikedMutualCluster(sb, gameId, name, playPicks, play_if_liked)
-  void sendNewReviewNewsletter(env, { slug, name, subtitle })
-    .then((out) => {
-      if (out.ok === false) console.warn('[GameRev] new review newsletter failed', { slug, error: out.error })
+  try {
+    const newsletter = await sendNewReviewNewsletter(env, { slug, name, subtitle })
+    if (newsletter.ok === false) {
+      console.warn('[GameRev] new review newsletter failed', { slug, error: newsletter.error })
+    }
+  } catch (err) {
+    console.warn('[GameRev] new review newsletter errored', {
+      slug,
+      error: err instanceof Error ? err.message : String(err),
     })
-    .catch((err) => {
-      console.warn('[GameRev] new review newsletter errored', {
-        slug,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    })
+  }
 
   return { ok: true, slug }
 }
