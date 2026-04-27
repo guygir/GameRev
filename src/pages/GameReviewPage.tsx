@@ -62,15 +62,24 @@ function getOrCreateVisitorKey(): string | null {
   }
 }
 
+function reviewViewStorageKey(slug: string): string {
+  return `gamerev:viewed:${slug}`
+}
+
 function hasTrackedReviewToday(slug: string): boolean {
   try {
-    const key = `gamerev:viewed:${slug}`
     const today = new Date().toISOString().slice(0, 10)
-    if (window.localStorage.getItem(key) === today) return true
-    window.localStorage.setItem(key, today)
-    return false
+    return window.localStorage.getItem(reviewViewStorageKey(slug)) === today
   } catch {
     return false
+  }
+}
+
+function markTrackedReviewToday(slug: string) {
+  try {
+    window.localStorage.setItem(reviewViewStorageKey(slug), new Date().toISOString().slice(0, 10))
+  } catch {
+    /* ignore */
   }
 }
 
@@ -240,9 +249,13 @@ export function GameReviewPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slug, visitorKey }),
-    }).catch(() => {
-      /* Analytics should never affect reading the review. */
     })
+      .then((res) => {
+        if (res.ok) markTrackedReviewToday(slug)
+      })
+      .catch(() => {
+        /* Analytics should never affect reading the review. */
+      })
   }, [error, gameId, loading, slug])
 
   const setMode = useCallback(

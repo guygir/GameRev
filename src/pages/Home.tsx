@@ -40,6 +40,7 @@ type GameCard = {
   catalog_rank: number | null
   view_count: number | null
   comment_count: number | null
+  comments?: { count: number }[]
 }
 
 /** Second line on catalog cover: publish date (date sort) or #rank (rank sort). */
@@ -91,6 +92,12 @@ function CommentIcon({ className }: { className?: string }) {
 }
 
 function HomeMetricBadges({ game, isLight }: { game: GameCard; isLight: boolean }) {
+  const commentCount =
+    typeof game.comment_count === 'number'
+      ? game.comment_count
+      : typeof game.comments?.[0]?.count === 'number'
+        ? game.comments[0].count
+        : 0
   return (
     <span
       className={clsx(
@@ -104,7 +111,7 @@ function HomeMetricBadges({ game, isLight }: { game: GameCard; isLight: boolean 
       </span>
       <span className="inline-flex items-center gap-1" title="Comments">
         <CommentIcon className="h-3.5 w-3.5" />
-        {compactCount(game.comment_count)}
+        {compactCount(commentCount)}
       </span>
     </span>
   )
@@ -187,7 +194,7 @@ export function Home() {
         const q = sb
           .from('games')
           .select(
-            'slug, name, subtitle, cover_image_url, accent_hue, accent_preset, accent_gray_level, created_at, catalog_rank, view_count, comment_count',
+            'slug, name, subtitle, cover_image_url, accent_hue, accent_preset, accent_gray_level, created_at, catalog_rank, view_count, comment_count, comments(count)',
           )
         const { data, error } = await (
           catalogSort === 'rank'
@@ -262,11 +269,10 @@ export function Home() {
           <div>
             <h1 className={clsx(homeTheme.fontDisplay, homeTheme.title)}>GameRev</h1>
             <p className={clsx(homeTheme.fontBody, homeTheme.subtitle, 'max-w-2xl')}>
-              GameRev is a small catalog of video game reviews: editorial layouts, a six-stat radar, HowLongToBeat-style
-              times, and reader comments—written to be read, not scrolled past.
+              GameRev is a small catalog of video game reviews
             </p>
-            <SuggestionBox isLight={isLight} className={homeTheme.fontBody} />
             <NewsletterSignup isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-5 max-w-2xl')} />
+            <SuggestionBox isLight={isLight} className={homeTheme.fontBody} />
           </div>
           <MyProjectsPanel isLight={isLight} homeTheme={homeTheme} />
         </header>

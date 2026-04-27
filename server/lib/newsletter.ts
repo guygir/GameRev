@@ -57,6 +57,7 @@ export async function subscribeNewsletterFromBody(
     '/subscribers',
     {
       email_address: email,
+      type: 'unactivated',
       metadata: {
         source: 'gamerev-home',
       },
@@ -67,7 +68,7 @@ export async function subscribeNewsletterFromBody(
     },
   )
   if (out.ok === false) return { ok: false, status: out.status, error: out.error }
-  return { ok: true, message: 'Check your email to confirm your Buttondown subscription.' }
+  return { ok: true, message: 'Check your email to confirm your subscription.' }
 }
 
 export async function sendNewReviewNewsletter(
