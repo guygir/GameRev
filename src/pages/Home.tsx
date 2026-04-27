@@ -161,7 +161,7 @@ function MyProjectsPanel({
           </a>
         ))}
       </div>
-      <KofiSupportButton isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-6')} />
+      <KofiSupportButton isLight={isLight} className={clsx(homeTheme.fontBody, 'mt-8')} />
     </aside>
   )
 }
