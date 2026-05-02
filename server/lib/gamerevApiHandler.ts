@@ -13,6 +13,7 @@ import { fetchSteamVisibility } from './steamPopularity.js'
 import { recordReviewViewFromBody } from './reviewViews.js'
 import { subscribeNewsletterFromBody } from './newsletter.js'
 import { runEditorLookupBundle } from './editorLookupBundle.js'
+import { searchHowLongToBeat } from './howLongToBeatSearch.js'
 import {
   adjustReviewSummaryEnglishLevel,
   generateEditorNoteFromSummary,
@@ -62,7 +63,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
     if (method === 'GET' && route === 'hltb-search') {
       const q = (searchParams.get('q') ?? '').trim()
       if (q.length < 2) return { status: 400, body: { error: 'Query too short' } }
-      const results = await hltb.search(q)
+      const results = await searchHowLongToBeat(q)
       const trimmed = results.slice(0, 12).map((r) => ({
         id: r.id,
         name: r.name,
