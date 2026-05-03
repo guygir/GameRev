@@ -37,6 +37,10 @@ export type AddGameBody = {
   steamAppId?: number | null
   steamReviewCount?: number | null
   visibilityScore?: number | null
+  steamDeveloper?: string | null
+  steamPublisher?: string | null
+  steamBasePrice?: string | null
+  steamReviewScorePercent?: number | null
 }
 
 export function optionalSteamAppId(raw: unknown): number | null {
@@ -58,6 +62,21 @@ export function optionalVisibilityScore01(raw: unknown): number | null {
   const n = typeof raw === 'number' ? raw : Number(raw)
   if (!Number.isFinite(n) || n < 0 || n > 1) return null
   return n
+}
+
+export function optionalSteamMetadataText(raw: unknown, maxLen: number): string | null {
+  if (raw === undefined || raw === null) return null
+  if (typeof raw !== 'string') return null
+  const t = raw.trim()
+  if (!t) return null
+  return t.slice(0, maxLen)
+}
+
+export function optionalSteamReviewScorePercent(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null
+  return Math.round(n * 100) / 100
 }
 
 export function parseStats(raw: unknown): GameStats | null {

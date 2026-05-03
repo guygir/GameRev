@@ -47,6 +47,11 @@ export type GameReviewViewModel = {
   accentGrayLevel: number | null
   /** Steam popularity needle 0–1; null hides the gauge. */
   visibilityScore: number | null
+  steamDeveloper: string | null
+  steamPublisher: string | null
+  steamBasePrice: string | null
+  /** Percent of Steam user reviews that are positive, 0–100. */
+  steamReviewScorePercent: number | null
 }
 
 function ReviewCoverFallback({ variant }: { variant: 'anthropic' | 'light' }) {
@@ -75,6 +80,11 @@ function resolvedReviewSummary(vm: GameReviewViewModel): string {
   if (t) return t
   const i = hashString(vm.name) % PLACEHOLDER_SUMMARIES.length
   return PLACEHOLDER_SUMMARIES[i]!
+}
+
+function formatSteamRating(percent: number | null): string | null {
+  if (percent == null || !Number.isFinite(percent)) return null
+  return `${percent.toFixed(1).replace(/\.0$/, '')}% positive`
 }
 
 function EditorNoteBody({ mode, className, children }: { mode: ReviewMode; className?: string; children: string }) {
@@ -145,6 +155,8 @@ export function GameReviewView({
   )
 
   const editorLine = useMemo(() => (vm.editorNote ?? '').trim(), [vm.editorNote])
+  const steamRating = formatSteamRating(vm.steamReviewScorePercent)
+  const hasStoreInfo = Boolean(vm.steamBasePrice || steamRating)
 
   return (
     <div
@@ -206,6 +218,29 @@ export function GameReviewView({
               >
                 {vm.subtitle}
               </p>
+              {vm.steamDeveloper || vm.steamPublisher ? (
+                <dl
+                  className={clsx(
+                    'motion-rise mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm leading-relaxed',
+                    theme.fontBody,
+                    mode === 'light' ? 'text-zinc-600' : 'text-[#f4e9d8]/80',
+                  )}
+                  style={{ ['--motion-rise-delay' as string]: '240ms' }}
+                >
+                  {vm.steamDeveloper ? (
+                    <div>
+                      <dt className="inline font-semibold text-[color:var(--review-accent)]">Developer</dt>{' '}
+                      <dd className="inline">{vm.steamDeveloper}</dd>
+                    </div>
+                  ) : null}
+                  {vm.steamPublisher ? (
+                    <div>
+                      <dt className="inline font-semibold text-[color:var(--review-accent)]">Publisher</dt>{' '}
+                      <dd className="inline">{vm.steamPublisher}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
               {vm.releaseLabel || vm.publishedAtLabel ? (
                 <p
                   className={clsx(
@@ -213,7 +248,7 @@ export function GameReviewView({
                     theme.fontBody,
                     mode === 'light' ? 'text-zinc-600' : 'text-[#f4e9d8]/80',
                   )}
-                  style={{ ['--motion-rise-delay' as string]: '240ms' }}
+                  style={{ ['--motion-rise-delay' as string]: '260ms' }}
                 >
                   {vm.releaseLabel ? (
                     <>
@@ -249,7 +284,7 @@ export function GameReviewView({
               {editorLine ? (
                 <div
                   className="motion-rise mt-6"
-                  style={{ ['--motion-rise-delay' as string]: '280ms' }}
+                  style={{ ['--motion-rise-delay' as string]: '300ms' }}
                 >
                   <h3
                     className={clsx(
@@ -300,6 +335,26 @@ export function GameReviewView({
                   </div>
                 </dl>
               </div>
+
+              {hasStoreInfo ? (
+                <div>
+                  <h2 className={clsx(theme.fontDisplay, theme.h2)}>Steam store</h2>
+                  <dl className="mt-4 grid grid-cols-2 gap-2 text-sm sm:gap-3">
+                    {vm.steamBasePrice ? (
+                      <div className={theme.hltbCard}>
+                        <dt className={theme.hltbLabel}>Base price</dt>
+                        <dd className={theme.hltbValue}>{vm.steamBasePrice}</dd>
+                      </div>
+                    ) : null}
+                    {steamRating ? (
+                      <div className={theme.hltbCard}>
+                        <dt className={theme.hltbLabel}>Steam rating</dt>
+                        <dd className={theme.hltbValue}>{steamRating}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </div>
+              ) : null}
 
               {vm.platforms.length ? (
                 <div>

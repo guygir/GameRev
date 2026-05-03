@@ -31,7 +31,12 @@ export type EditorLookupBundleResponse = {
         appId: number
         steamName: string
         totalReviews: number
+        totalPositive: number | null
+        reviewScorePercent: number | null
         visibilityScore: number
+        developer: string | null
+        publisher: string | null
+        basePrice: string | null
         storeUrl: string
         alternateHits: SteamStoreHit[]
         suggestions: SteamReviewEditorSuggestions | null
@@ -168,7 +173,12 @@ export async function runEditorLookupBundle(
       appId: steamVis.appId,
       steamName: steamVis.steamName,
       totalReviews: steamVis.totalReviews,
+      totalPositive: steamVis.totalPositive,
+      reviewScorePercent: steamVis.reviewScorePercent,
       visibilityScore: steamVis.visibilityScore,
+      developer: steamVis.developer,
+      publisher: steamVis.publisher,
+      basePrice: steamVis.basePrice,
       storeUrl: `https://store.steampowered.com/app/${steamVis.appId}/`,
       alternateHits: steamVis.alternateHits,
       suggestions,

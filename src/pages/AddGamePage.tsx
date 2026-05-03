@@ -107,6 +107,16 @@ type SteamReviewSuggestState = {
   fetchError?: string
 }
 
+type SteamStoreHit = {
+  appId: number
+  name: string
+  developer?: string | null
+  publisher?: string | null
+  basePrice?: string | null
+  reviewScorePercent?: number | null
+  totalReviews?: number | null
+}
+
 type EditorLookupBundleJson = {
   query: string
   igdb: { ok: true; matches: IgdbGenreRow[] } | { ok: false; error: string }
@@ -117,9 +127,14 @@ type EditorLookupBundleJson = {
         appId: number
         steamName: string
         totalReviews: number
+        totalPositive?: number | null
+        reviewScorePercent?: number | null
         visibilityScore: number
+        developer?: string | null
+        publisher?: string | null
+        basePrice?: string | null
         storeUrl: string
-        alternateHits: { appId: number; name: string }[]
+        alternateHits: SteamStoreHit[]
         suggestions: {
           reviewSnippets: string[]
           suggestedTags: string[]
@@ -138,6 +153,14 @@ type EditorLookupBundleOverrides = {
   steamPreferAppId?: number
   steamPreferSteamName?: string
   backloggdSlug?: string
+}
+
+function formatSteamReviewScore(score: number | null | undefined): string {
+  return typeof score === 'number' && Number.isFinite(score) ? `${score.toFixed(1)}% positive` : 'Rating unknown'
+}
+
+function formatSteamReviews(n: number | null | undefined): string | null {
+  return typeof n === 'number' && Number.isFinite(n) ? `${Math.max(0, Math.floor(n)).toLocaleString()} reviews` : null
 }
 
 function appendUniqueLines(current: string, lines: string[]): string {
@@ -269,7 +292,11 @@ export function AddGamePage() {
   const [steamErr, setSteamErr] = useState<string | null>(null)
   const [steamReviewSuggest, setSteamReviewSuggest] = useState<SteamReviewSuggestState | null>(null)
   /** Other Steam store rows for the last name-based search (GET or bundle). */
-  const [steamAlternateHits, setSteamAlternateHits] = useState<{ appId: number; name: string }[]>([])
+  const [steamAlternateHits, setSteamAlternateHits] = useState<SteamStoreHit[]>([])
+  const [steamDeveloper, setSteamDeveloper] = useState<string | null>(null)
+  const [steamPublisher, setSteamPublisher] = useState<string | null>(null)
+  const [steamBasePrice, setSteamBasePrice] = useState<string | null>(null)
+  const [steamReviewScorePercent, setSteamReviewScorePercent] = useState<number | null>(null)
   const [editorBundleBusy, setEditorBundleBusy] = useState(false)
   const [editorBundleErr, setEditorBundleErr] = useState<string | null>(null)
 
@@ -341,6 +368,10 @@ export function AddGamePage() {
     setSteamErr(null)
     setSteamReviewSuggest(null)
     setSteamAlternateHits([])
+    setSteamDeveloper(null)
+    setSteamPublisher(null)
+    setSteamBasePrice(null)
+    setSteamReviewScorePercent(null)
     setEditorBundleBusy(false)
     setEditorBundleErr(null)
     setSubmitStatus(null)
@@ -445,6 +476,10 @@ export function AddGamePage() {
         steam_app_id: number | null
         steam_review_count: number | null
         visibility_score: number | null
+        steam_developer: string | null
+        steam_publisher: string | null
+        steam_base_price: string | null
+        steam_review_score_percent: number | null
       }
       const { data, error } = await sb
         .from('games')
@@ -473,7 +508,11 @@ export function AddGamePage() {
           game_tags ( tag ),
           steam_app_id,
           steam_review_count,
-          visibility_score
+          visibility_score,
+          steam_developer,
+          steam_publisher,
+          steam_base_price,
+          steam_review_score_percent
         `,
         )
         .eq('slug', loadReviewSlug)
@@ -557,6 +596,14 @@ export function AddGamePage() {
       setSteamReviewSuggest(null)
       setSteamErr(null)
       setSteamSuggestedVisibility(null)
+      setSteamDeveloper(row.steam_developer?.trim() ? row.steam_developer.trim() : null)
+      setSteamPublisher(row.steam_publisher?.trim() ? row.steam_publisher.trim() : null)
+      setSteamBasePrice(row.steam_base_price?.trim() ? row.steam_base_price.trim() : null)
+      setSteamReviewScorePercent(
+        typeof row.steam_review_score_percent === 'number' && Number.isFinite(row.steam_review_score_percent)
+          ? row.steam_review_score_percent
+          : null,
+      )
       if (typeof row.steam_app_id === 'number' && row.steam_app_id > 0) {
         setSteamAppId(row.steam_app_id)
         setSteamReviewCount(
@@ -1157,6 +1204,10 @@ export function AddGamePage() {
     setSteamErr(null)
     setSteamReviewSuggest(null)
     setSteamAlternateHits([])
+    setSteamDeveloper(null)
+    setSteamPublisher(null)
+    setSteamBasePrice(null)
+    setSteamReviewScorePercent(null)
   }, [])
 
   const fetchSteamSnapshot = useCallback(
@@ -1183,7 +1234,11 @@ export function AddGamePage() {
           steamName?: string
           totalReviews?: number
           visibilityScore?: number
-          alternateHits?: { appId: number; name: string }[]
+          developer?: string | null
+          publisher?: string | null
+          basePrice?: string | null
+          reviewScorePercent?: number | null
+          alternateHits?: SteamStoreHit[]
           error?: string
         }
         if (!res.ok) throw new Error(json.error ?? 'Steam lookup failed')
@@ -1200,6 +1255,14 @@ export function AddGamePage() {
         setSteamSuggestedVisibility(suggested)
         setVisibilityScore(suggested)
         setSteamResolvedName(typeof json.steamName === 'string' ? json.steamName : null)
+        setSteamDeveloper(typeof json.developer === 'string' ? json.developer : null)
+        setSteamPublisher(typeof json.publisher === 'string' ? json.publisher : null)
+        setSteamBasePrice(typeof json.basePrice === 'string' ? json.basePrice : null)
+        setSteamReviewScorePercent(
+          typeof json.reviewScorePercent === 'number' && Number.isFinite(json.reviewScorePercent)
+            ? json.reviewScorePercent
+            : null,
+        )
         setSteamAlternateHits(Array.isArray(json.alternateHits) ? json.alternateHits : [])
       } catch (e) {
         clearSteamSnapshot()
@@ -1275,6 +1338,14 @@ export function AddGamePage() {
         setSteamSuggestedVisibility(json.steam.visibilityScore)
         setVisibilityScore(json.steam.visibilityScore)
         setSteamResolvedName(json.steam.steamName)
+        setSteamDeveloper(json.steam.developer ?? null)
+        setSteamPublisher(json.steam.publisher ?? null)
+        setSteamBasePrice(json.steam.basePrice ?? null)
+        setSteamReviewScorePercent(
+          typeof json.steam.reviewScorePercent === 'number' && Number.isFinite(json.steam.reviewScorePercent)
+            ? json.steam.reviewScorePercent
+            : null,
+        )
         setSteamAlternateHits(
           Array.isArray(json.steam.alternateHits) ? json.steam.alternateHits : [],
         )
@@ -1363,7 +1434,15 @@ export function AddGamePage() {
         catalogRank: catalogRankPosition,
         ...(loadReviewSlug ? { slug: loadReviewSlug } : {}),
         ...(loadReviewSlug || hasSteamForCreate
-          ? { steamAppId, steamReviewCount, visibilityScore }
+          ? {
+              steamAppId,
+              steamReviewCount,
+              visibilityScore,
+              steamDeveloper,
+              steamPublisher,
+              steamBasePrice,
+              steamReviewScorePercent,
+            }
           : {}),
       }
       const url = loadReviewSlug ? '/api/update-game' : '/api/add-game'
@@ -1429,6 +1508,10 @@ export function AddGamePage() {
     stats,
     subtitle,
     steamAppId,
+    steamBasePrice,
+    steamDeveloper,
+    steamPublisher,
+    steamReviewScorePercent,
     steamReviewCount,
     visibilityScore,
   ])
@@ -2268,21 +2351,52 @@ export function AddGamePage() {
                   {' · '}
                   {steamReviewCount.toLocaleString()} reviews
                 </p>
-                {steamAlternateHits.length > 0 ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Developer</p>
+                    <p className="mt-1 text-sm font-medium text-zinc-200">{steamDeveloper ?? 'Unknown'}</p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Publisher</p>
+                    <p className="mt-1 text-sm font-medium text-zinc-200">{steamPublisher ?? 'Unknown'}</p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Base price</p>
+                    <p className="mt-1 text-sm font-medium text-zinc-200">{steamBasePrice ?? 'Unknown'}</p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Steam rating</p>
+                    <p className="mt-1 text-sm font-medium text-zinc-200">
+                      {formatSteamReviewScore(steamReviewScorePercent)}
+                    </p>
+                  </div>
+                </div>
+                {steamAppId != null ? (
                   <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                      Other Steam store matches
+                      Steam store matches (first search page)
                     </p>
                     <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
-                      The first search result is used by default. If it is the wrong game, pick the right listing — this
-                      re-runs the full IGDB + Backloggd + Steam bundle with the same name query.
+                      Steam's first search result is selected by default. If Steam returned more listings, pick the right
+                      one here — this re-runs the full IGDB + Backloggd + Steam bundle with the same name query.
                     </p>
                     <ul className="mt-2 flex flex-col gap-1.5">
-                      {steamAlternateHits.map((h) => (
+                      {[
+                        {
+                          appId: steamAppId,
+                          name: steamResolvedName ?? `App ${steamAppId}`,
+                          developer: steamDeveloper,
+                          publisher: steamPublisher,
+                          basePrice: steamBasePrice,
+                          reviewScorePercent: steamReviewScorePercent,
+                          totalReviews: steamReviewCount,
+                        },
+                        ...steamAlternateHits.filter((h) => h.appId !== steamAppId),
+                      ].map((h, idx) => (
                         <li key={h.appId}>
                           <button
                             type="button"
-                            disabled={steamBusy || editorBundleBusy}
+                            disabled={steamBusy || editorBundleBusy || h.appId === steamAppId}
                             onClick={() =>
                               void runEditorLookupBundle({
                                 steamPreferAppId: h.appId,
@@ -2291,12 +2405,36 @@ export function AddGamePage() {
                             }
                             className="w-full rounded-md border border-zinc-700 bg-zinc-900/80 px-2 py-1.5 text-left text-xs text-zinc-200 transition hover:border-sky-500/50 hover:bg-zinc-800 disabled:opacity-50"
                           >
-                            <span className="font-medium text-sky-200/90">{h.name}</span>
-                            <span className="ml-2 font-mono text-zinc-500">app {h.appId}</span>
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="font-medium text-sky-200/90">{h.name}</span>
+                              <span className="font-mono text-zinc-500">app {h.appId}</span>
+                              {idx === 0 ? (
+                                <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-200">
+                                  Selected
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="mt-1 block leading-relaxed text-zinc-500">
+                              {[
+                                h.developer ? `Dev: ${h.developer}` : null,
+                                h.publisher ? `Pub: ${h.publisher}` : null,
+                                h.basePrice ? `Price: ${h.basePrice}` : null,
+                                formatSteamReviews(h.totalReviews),
+                                h.reviewScorePercent != null ? formatSteamReviewScore(h.reviewScorePercent) : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ') || 'Steam metadata unavailable'}
+                            </span>
                           </button>
                         </li>
                       ))}
                     </ul>
+                    {steamAlternateHits.length === 0 ? (
+                      <p className="mt-2 text-[11px] leading-relaxed text-amber-200/80">
+                        Steam returned only this one result for the current exact query, so there are no alternate rows to
+                        pick from on the first search page.
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
                 {steamSuggestedVisibility != null ? (

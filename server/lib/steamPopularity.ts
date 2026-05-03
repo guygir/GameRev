@@ -8,19 +8,44 @@ export type SteamVisibilityOk = {
   appId: number
   steamName: string
   totalReviews: number
+  totalPositive: number | null
+  reviewScorePercent: number | null
   /** 0 = unknown / niche, 1 = very popular on Steam (log-scaled + release-year tweak). */
   visibilityScore: number
+  developer: string | null
+  publisher: string | null
+  basePrice: string | null
 }
 
 /** One row from Steam store search (used for alternate listings). */
-export type SteamStoreHit = { appId: number; name: string }
-
-type SteamSearchItem = { id?: number; name?: string }
+export type SteamStoreHit = {
+  appId: number
+  name: string
+  developer?: string | null
+  publisher?: string | null
+  basePrice?: string | null
+  reviewScorePercent?: number | null
+  totalReviews?: number | null
+}
 
 function clamp01(n: number): number {
   if (n < 0) return 0
   if (n > 1) return 1
   return n
+}
+
+function decodeHtmlEntities(raw: string): string {
+  return raw
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
+
+function stripHtml(raw: string): string {
+  return decodeHtmlEntities(raw.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim())
 }
 
 /**
@@ -50,25 +75,41 @@ export async function steamStoreSearchHits(
   if (q.length < 2) return { error: 'Query too short.' }
   if (q.length > 120) return { error: 'Query too long.' }
 
-  const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(q)}&cc=US&l=en`
+  const searchUrl = `https://store.steampowered.com/search?term=${encodeURIComponent(q)}`
   const searchRes = await fetch(searchUrl, {
-    headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
+    headers: {
+      Accept: 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'User-Agent': STEAM_UA,
+    },
   })
   if (!searchRes.ok) return { error: `Steam search HTTP ${searchRes.status}` }
-  const searchJson = (await searchRes.json()) as { items?: SteamSearchItem[] }
-  const items = Array.isArray(searchJson.items) ? searchJson.items : []
+  const html = await searchRes.text()
   const hits: SteamStoreHit[] = []
-  for (const it of items) {
-    if (typeof it.id !== 'number' || it.id <= 0) continue
-    const name = typeof it.name === 'string' && it.name.trim() ? it.name.trim() : `App ${it.id}`
-    hits.push({ appId: it.id, name })
+  const seen = new Set<number>()
+  const rowPattern =
+    /<a\b[^>]*href="https:\/\/store\.steampowered\.com\/app\/(\d+)\/[^"]*"[^>]*class="[^"]*\bsearch_result_row\b[^"]*"[\s\S]*?<\/a>/gi
+  for (const match of html.matchAll(rowPattern)) {
+    const appId = Number(match[1])
+    if (!Number.isInteger(appId) || appId <= 0 || seen.has(appId)) continue
+    const rowHtml = match[0]
+    const titleMatch = rowHtml.match(/<span class="title">([\s\S]*?)<\/span>/i)
+    const name = titleMatch ? stripHtml(titleMatch[1]!) : `App ${appId}`
+    seen.add(appId)
+    hits.push({ appId, name })
     if (hits.length >= max) break
   }
-  if (!hits.length) return { error: 'No Steam store match for that title.' }
+  if (!hits.length) return { error: 'No Steam search-page match for that title.' }
   return hits
 }
 
-async function fetchSteamReviewTotal(appId: number): Promise<number | { error: string }> {
+type SteamReviewSnapshot = {
+  totalReviews: number
+  totalPositive: number | null
+  reviewScorePercent: number | null
+}
+
+async function fetchSteamReviewSnapshot(appId: number): Promise<SteamReviewSnapshot | { error: string }> {
   const id = Math.floor(appId)
   if (!Number.isFinite(id) || id <= 0) return { error: 'Invalid Steam app id.' }
   const revUrl = `https://store.steampowered.com/appreviews/${id}?json=1&filter=all&language=all&purchase_type=all`
@@ -78,7 +119,12 @@ async function fetchSteamReviewTotal(appId: number): Promise<number | { error: s
   if (!revRes.ok) return { error: `Steam reviews HTTP ${revRes.status}` }
   const revJson = (await revRes.json()) as {
     success?: number
-    query_summary?: { total_reviews?: number; num_reviews?: number }
+    query_summary?: {
+      total_reviews?: number
+      num_reviews?: number
+      total_positive?: number
+      total_negative?: number
+    }
   }
   const total =
     typeof revJson.query_summary?.total_reviews === 'number'
@@ -86,7 +132,62 @@ async function fetchSteamReviewTotal(appId: number): Promise<number | { error: s
       : typeof revJson.query_summary?.num_reviews === 'number'
         ? revJson.query_summary.num_reviews
         : 0
-  return total
+  const totalPositive =
+    typeof revJson.query_summary?.total_positive === 'number' ? revJson.query_summary.total_positive : null
+  const reviewScorePercent =
+    total > 0 && totalPositive != null ? Math.round((totalPositive / total) * 1000) / 10 : null
+  return { totalReviews: total, totalPositive, reviewScorePercent }
+}
+
+async function fetchSteamStoreMetadata(
+  appId: number,
+): Promise<{ developer: string | null; publisher: string | null; basePrice: string | null }> {
+  const id = Math.floor(appId)
+  if (!Number.isFinite(id) || id <= 0) {
+    return { developer: null, publisher: null, basePrice: null }
+  }
+  try {
+    const url = `https://store.steampowered.com/api/appdetails?appids=${id}&cc=US&l=en`
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
+    })
+    if (!res.ok) return { developer: null, publisher: null, basePrice: null }
+    const json = (await res.json()) as Record<
+      string,
+      {
+        success?: boolean
+        data?: {
+          developers?: string[]
+          publishers?: string[]
+          price_overview?: {
+            initial?: number
+            initial_formatted?: string
+            final_formatted?: string
+          }
+          is_free?: boolean
+        }
+      }
+    >
+    const data = json[String(id)]?.data
+    const price = data?.price_overview
+    const basePrice =
+      data?.is_free === true
+        ? 'Free'
+        : price?.initial_formatted?.trim()
+          ? price.initial_formatted.trim()
+          : price?.final_formatted?.trim()
+            ? price.final_formatted.trim()
+            : typeof price?.initial === 'number' && price.initial > 0
+              ? `$${(price.initial / 100).toFixed(2)}`
+              : null
+    return {
+      developer: Array.isArray(data?.developers) && data.developers[0] ? data.developers[0] : null,
+      publisher: Array.isArray(data?.publishers) && data.publishers[0] ? data.publishers[0] : null,
+      basePrice,
+    }
+  } catch {
+    return { developer: null, publisher: null, basePrice: null }
+  }
 }
 
 export type SteamVisibilityResolved = SteamVisibilityOk & {
@@ -125,17 +226,38 @@ export async function fetchSteamVisibility(
   }
   if (!selected) selected = hitsRes[0]!
 
-  const totalRes = await fetchSteamReviewTotal(selected.appId)
-  if (typeof totalRes !== 'number') return totalRes
+  const [selectedReviews, selectedMeta] = await Promise.all([
+    fetchSteamReviewSnapshot(selected.appId),
+    fetchSteamStoreMetadata(selected.appId),
+  ])
+  if ('error' in selectedReviews) return selectedReviews
 
-  const visibilityScore = computeVisibilityScore(totalRes, releaseYear)
-  const alternateHits = hitsRes.filter((h) => h.appId !== selected.appId).slice(0, 12)
+  const visibilityScore = computeVisibilityScore(selectedReviews.totalReviews, releaseYear)
+  const alternateBaseHits = hitsRes.filter((h) => h.appId !== selected.appId).slice(0, 12)
+  const alternateHits = await Promise.all(
+    alternateBaseHits.map(async (hit) => {
+      const [reviews, meta] = await Promise.all([
+        fetchSteamReviewSnapshot(hit.appId).catch(() => null),
+        fetchSteamStoreMetadata(hit.appId),
+      ])
+      const reviewSnapshot = reviews && !('error' in reviews) ? reviews : null
+      return {
+        ...hit,
+        ...meta,
+        reviewScorePercent: reviewSnapshot?.reviewScorePercent ?? null,
+        totalReviews: reviewSnapshot?.totalReviews ?? null,
+      }
+    }),
+  )
 
   return {
     appId: selected.appId,
     steamName: selected.name,
-    totalReviews: totalRes,
+    totalReviews: selectedReviews.totalReviews,
+    totalPositive: selectedReviews.totalPositive,
+    reviewScorePercent: selectedReviews.reviewScorePercent,
     visibilityScore,
+    ...selectedMeta,
     alternateHits,
   }
 }

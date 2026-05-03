@@ -34,6 +34,10 @@ type GameJoinRow = {
   game_genres: { genre: string }[] | null
   game_tags: { tag: string }[] | null
   visibility_score?: number | null
+  steam_developer?: string | null
+  steam_publisher?: string | null
+  steam_base_price?: string | null
+  steam_review_score_percent?: number | null
 }
 
 function isGameStats(raw: unknown): raw is GameStats {
@@ -138,7 +142,11 @@ export function GameReviewPage() {
           play_if_liked,
           game_genres ( genre ),
           game_tags ( tag ),
-          visibility_score
+          visibility_score,
+          steam_developer,
+          steam_publisher,
+          steam_base_price,
+          steam_review_score_percent
         `,
         )
         .eq('slug', slug)
@@ -214,6 +222,13 @@ export function GameReviewPage() {
         visibilityScore:
           typeof row.visibility_score === 'number' && Number.isFinite(row.visibility_score)
             ? Math.min(1, Math.max(0, row.visibility_score))
+            : null,
+        steamDeveloper: row.steam_developer?.trim() ? row.steam_developer.trim() : null,
+        steamPublisher: row.steam_publisher?.trim() ? row.steam_publisher.trim() : null,
+        steamBasePrice: row.steam_base_price?.trim() ? row.steam_base_price.trim() : null,
+        steamReviewScorePercent:
+          typeof row.steam_review_score_percent === 'number' && Number.isFinite(row.steam_review_score_percent)
+            ? row.steam_review_score_percent
             : null,
       }
 

@@ -45,6 +45,10 @@ export function StructuredGameReviewPage() {
       accentPreset: null,
       accentGrayLevel: null,
       visibilityScore: 0.52,
+      steamDeveloper: 'rose-engine',
+      steamPublisher: 'Humble Games',
+      steamBasePrice: '$19.99',
+      steamReviewScorePercent: 96.2,
     }),
     [],
   )

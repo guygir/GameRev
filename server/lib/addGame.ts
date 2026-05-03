@@ -8,6 +8,8 @@ import {
   normalizeStringList,
   normalizeSummaryText,
   optionalSteamAppId,
+  optionalSteamMetadataText,
+  optionalSteamReviewScorePercent,
   optionalSteamReviewCount,
   optionalVisibilityScore01,
   parseStats,
@@ -88,6 +90,10 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
   const steam_app_id = optionalSteamAppId(b.steamAppId)
   const steam_review_count = optionalSteamReviewCount(b.steamReviewCount)
   const visibility_score = optionalVisibilityScore01(b.visibilityScore)
+  const steam_developer = optionalSteamMetadataText(b.steamDeveloper, 200)
+  const steam_publisher = optionalSteamMetadataText(b.steamPublisher, 200)
+  const steam_base_price = optionalSteamMetadataText(b.steamBasePrice, 48)
+  const steam_review_score_percent = optionalSteamReviewScorePercent(b.steamReviewScorePercent)
   const playPicks = normalizePlayIfLiked(b.playIfLiked, 16)
 
   const numOrNull = (v: unknown): number | null => {
@@ -159,7 +165,15 @@ export async function addGameFromBody(body: unknown, env: Env): Promise<{ ok: tr
       ...(steam_app_id != null &&
       steam_review_count != null &&
       visibility_score != null
-        ? { steam_app_id, steam_review_count, visibility_score }
+        ? {
+            steam_app_id,
+            steam_review_count,
+            visibility_score,
+            steam_developer,
+            steam_publisher,
+            steam_base_price,
+            steam_review_score_percent,
+          }
         : {}),
     })
     .select('id')

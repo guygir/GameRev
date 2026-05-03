@@ -411,7 +411,11 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
           created_at,
           game_genres ( genre ),
           game_tags ( tag ),
-          visibility_score
+          visibility_score,
+          steam_developer,
+          steam_publisher,
+          steam_base_price,
+          steam_review_score_percent
         `,
         )
         .eq('slug', slug)
@@ -443,6 +447,10 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         game_genres: { genre: string }[] | null
         game_tags: { tag: string }[] | null
         visibility_score: number | null
+        steam_developer: string | null
+        steam_publisher: string | null
+        steam_base_price: string | null
+        steam_review_score_percent: number | null
       }
 
       const vis =
@@ -482,6 +490,13 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
             tags: (row.game_tags ?? []).map((r) => r.tag),
             createdAt: row.created_at,
             publishedAtLabel: formatReviewPublishedLabel(row.created_at),
+            steamDeveloper: row.steam_developer?.trim() ? row.steam_developer.trim() : null,
+            steamPublisher: row.steam_publisher?.trim() ? row.steam_publisher.trim() : null,
+            steamBasePrice: row.steam_base_price?.trim() ? row.steam_base_price.trim() : null,
+            steamReviewScorePercent:
+              typeof row.steam_review_score_percent === 'number' && Number.isFinite(row.steam_review_score_percent)
+                ? row.steam_review_score_percent
+                : null,
             visibilityScore: vis,
           },
         },

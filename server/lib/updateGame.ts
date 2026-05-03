@@ -6,6 +6,8 @@ import {
   normalizeStringList,
   normalizeSummaryText,
   optionalSteamAppId,
+  optionalSteamMetadataText,
+  optionalSteamReviewScorePercent,
   optionalSteamReviewCount,
   optionalVisibilityScore01,
   parseStats,
@@ -84,11 +86,21 @@ export async function updateGameFromBody(
 
   const rawBody = b as Record<string, unknown>
   const patchSteam =
-    'steamAppId' in rawBody || 'steamReviewCount' in rawBody || 'visibilityScore' in rawBody
+    'steamAppId' in rawBody ||
+    'steamReviewCount' in rawBody ||
+    'visibilityScore' in rawBody ||
+    'steamDeveloper' in rawBody ||
+    'steamPublisher' in rawBody ||
+    'steamBasePrice' in rawBody ||
+    'steamReviewScorePercent' in rawBody
       ? {
           steam_app_id: optionalSteamAppId(b.steamAppId),
           steam_review_count: optionalSteamReviewCount(b.steamReviewCount),
           visibility_score: optionalVisibilityScore01(b.visibilityScore),
+          steam_developer: optionalSteamMetadataText(b.steamDeveloper, 200),
+          steam_publisher: optionalSteamMetadataText(b.steamPublisher, 200),
+          steam_base_price: optionalSteamMetadataText(b.steamBasePrice, 48),
+          steam_review_score_percent: optionalSteamReviewScorePercent(b.steamReviewScorePercent),
         }
       : null
 
@@ -164,6 +176,10 @@ export async function updateGameFromBody(
             steam_app_id: patchSteam.steam_app_id,
             steam_review_count: patchSteam.steam_review_count,
             visibility_score: patchSteam.visibility_score,
+            steam_developer: patchSteam.steam_developer,
+            steam_publisher: patchSteam.steam_publisher,
+            steam_base_price: patchSteam.steam_base_price,
+            steam_review_score_percent: patchSteam.steam_review_score_percent,
           }
         : {}),
       ...accentRowPatch,
