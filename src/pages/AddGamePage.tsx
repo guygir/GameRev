@@ -13,7 +13,19 @@ import { getSupabaseBrowser } from '../lib/supabaseClient'
 import { readReviewModePreference } from '../lib/reviewModePreference'
 import { parseReleaseYearFromLabel } from '../lib/parseReleaseYearFromLabel'
 import { BACKLOGGD_GEMINI_MODEL_SELECT_OPTIONS } from '../lib/geminiBackloggdModels'
+import { buildBackloggdPasteText } from '../lib/reviewPublicUrl'
 import type { CommentRow } from '../types/game'
+
+type SummaryPipelineStage = {
+  id: string
+  label: string
+  text: string
+  aiLikelihood: number | null
+  aiVerdict: string | null
+  slopFlagged: boolean
+  detectorError?: string
+  detectorSource?: string
+}
 
 type HltbHit = {
   id: string
@@ -260,6 +272,9 @@ export function AddGamePage() {
   const [summarySuggestErr, setSummarySuggestErr] = useState<string | null>(null)
   /** Last successful summary request used heuristic text, not cloud LLM output. */
   const [summaryNotFromCloudAi, setSummaryNotFromCloudAi] = useState(false)
+  /** Pipeline versions + AI detector scores from the last Suggest paragraph run. */
+  const [summaryPipelineStages, setSummaryPipelineStages] = useState<SummaryPipelineStage[]>([])
+  const [summaryDetectorMode, setSummaryDetectorMode] = useState<'llm' | 'local' | null>(null)
   const [summaryEnglishBusy, setSummaryEnglishBusy] = useState(false)
   const [summaryEnglishErr, setSummaryEnglishErr] = useState<string | null>(null)
   const [outlineFromSummaryBusy, setOutlineFromSummaryBusy] = useState(false)
@@ -303,6 +318,7 @@ export function AddGamePage() {
   const [submitStatus, setSubmitStatus] = useState<string | null>(null)
   const [submitBusy, setSubmitBusy] = useState(false)
   const [savedSlug, setSavedSlug] = useState<string | null>(null)
+  const [backloggdCopyDone, setBackloggdCopyDone] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [editLoadError, setEditLoadError] = useState<string | null>(null)
   const [editComments, setEditComments] = useState<CommentRow[]>([])
@@ -842,6 +858,8 @@ export function AddGamePage() {
     setSummarySuggestErr(null)
     setSummaryEnglishErr(null)
     setSummaryNotFromCloudAi(false)
+    setSummaryPipelineStages([])
+    setSummaryDetectorMode(null)
     try {
       const res = await fetch('/api/review-summary-suggest', {
         method: 'POST',
@@ -853,12 +871,27 @@ export function AddGamePage() {
           ...(cloudLlmGeminiModel ? { geminiModel: cloudLlmGeminiModel } : {}),
         }),
       })
-      const json = (await res.json()) as { summary?: string; usedHeuristicFallback?: boolean; error?: string }
+      const json = (await res.json()) as {
+        summary?: string
+        usedHeuristicFallback?: boolean
+        stages?: SummaryPipelineStage[]
+        detectorConfigured?: boolean
+        detectorMode?: 'llm' | 'local'
+        error?: string
+      }
       if (!res.ok) throw new Error(json.error ?? 'Summary suggestion failed')
       const s = typeof json.summary === 'string' ? json.summary.trim() : ''
       if (!s) throw new Error('Empty summary from server')
       setSummaryText(s)
       setSummaryNotFromCloudAi(json.usedHeuristicFallback === true)
+      setSummaryPipelineStages(Array.isArray(json.stages) ? json.stages : [])
+      setSummaryDetectorMode(
+        json.detectorMode === 'llm' || json.detectorMode === 'local'
+          ? json.detectorMode
+          : json.detectorConfigured === true
+            ? 'llm'
+            : 'local',
+      )
     } catch (e) {
       setSummarySuggestErr(e instanceof Error ? e.message : 'Summary suggestion failed')
     } finally {
@@ -1515,6 +1548,26 @@ export function AddGamePage() {
     steamReviewCount,
     visibilityScore,
   ])
+
+  const backloggdPasteText = useMemo(() => {
+    if (!savedSlug) return ''
+    return buildBackloggdPasteText({
+      slug: savedSlug,
+      editorNote: editorNoteText,
+      summary: summaryText,
+    })
+  }, [savedSlug, editorNoteText, summaryText])
+
+  const copyBackloggdPaste = useCallback(async () => {
+    if (!backloggdPasteText) return
+    try {
+      await navigator.clipboard.writeText(backloggdPasteText)
+      setBackloggdCopyDone(true)
+      window.setTimeout(() => setBackloggdCopyDone(false), 2000)
+    } catch {
+      setBackloggdCopyDone(false)
+    }
+  }, [backloggdPasteText])
 
   const deleteEditComment = useCallback(
     async (commentId: string) => {
@@ -3001,6 +3054,82 @@ export function AddGamePage() {
             className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-emerald-500/30 focus:ring-2"
             placeholder="Short verdict for skimmers—no spoilers, your own words."
           />
+          {summaryPipelineStages.length > 0 ? (
+            <div className="mt-4 space-y-3 rounded-xl border border-zinc-700/80 bg-zinc-950/60 p-4">
+              <h3 className="text-sm font-semibold text-zinc-200">Suggest paragraph pipeline</h3>
+              {summaryDetectorMode === 'local' ? (
+                <p className="rounded-md border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-100">
+                  AI % is a <strong className="font-semibold">local pattern guess</strong> — the LLM scorer failed or no
+                  key. Easiest fix: add <span className="font-mono">GROQ_API_KEY</span> (free, instant at{' '}
+                  <a
+                    href="https://console.groq.com/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-amber-200 underline underline-offset-2"
+                  >
+                    console.groq.com
+                  </a>
+                  ) or use <span className="font-mono">GEMINI_API_KEY</span> if quota is available. Restart{' '}
+                  <span className="font-mono">npm run dev</span> after editing <span className="font-mono">.env</span>.
+                  Check rose “Detector:” lines below for quota errors.
+                </p>
+              ) : null}
+              <p className="text-[11px] leading-relaxed text-zinc-500">
+                Each step is what the server produced before the summary box was filled. AI % is scored by a small LLM
+                (Groq → Gemini → OpenAI). Local slop = our heuristic would trigger another de-AI rewrite.
+              </p>
+              <ol className="space-y-3">
+                {summaryPipelineStages.map((stage) => (
+                  <li
+                    key={stage.id}
+                    className={clsx(
+                      'rounded-lg border p-3',
+                      stage.slopFlagged
+                        ? 'border-amber-500/40 bg-amber-950/20'
+                        : 'border-zinc-800 bg-zinc-900/50',
+                    )}
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                        {stage.label}
+                      </span>
+                      <span className="text-xs text-zinc-300">
+                        {stage.aiLikelihood != null ? (
+                          <>
+                            <span
+                              className={clsx(
+                                'font-mono font-semibold',
+                                stage.detectorSource === 'local estimate'
+                                  ? 'text-sky-200/90'
+                                  : 'text-amber-200/90',
+                              )}
+                            >
+                              {stage.aiLikelihood}%
+                            </span>{' '}
+                            AI
+                            {stage.aiVerdict ? (
+                              <span className="text-zinc-500"> · {stage.aiVerdict}</span>
+                            ) : null}
+                            {stage.detectorSource ? (
+                              <span className="text-zinc-500"> · {stage.detectorSource}</span>
+                            ) : null}
+                          </>
+                        ) : stage.detectorError ? (
+                          <span className="text-rose-300">Detector: {stage.detectorError}</span>
+                        ) : (
+                          <span className="text-zinc-500">No AI score</span>
+                        )}
+                        {stage.slopFlagged ? (
+                          <span className="ml-2 text-amber-300/90">· local slop flagged</span>
+                        ) : null}
+                      </span>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-zinc-300">{stage.text}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
         </section>
 
         <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
@@ -3150,6 +3279,30 @@ export function AddGamePage() {
             </div>
           ) : null}
         </section>
+
+        {savedSlug ? (
+          <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+            <h2 className="text-lg font-semibold text-white">Copy to Backloggd</h2>
+            <p className="text-xs leading-relaxed text-zinc-500">
+              Paste this into your Backloggd review after publishing. Uses your editor&apos;s note, the live review
+              link, and summary.
+            </p>
+            <textarea
+              readOnly
+              value={backloggdPasteText}
+              rows={8}
+              className="w-full resize-y rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed text-zinc-200 outline-none ring-emerald-500/30 focus:ring-2"
+              aria-label="Backloggd paste text"
+            />
+            <button
+              type="button"
+              onClick={() => void copyBackloggdPaste()}
+              className="rounded-lg border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-100 transition hover:border-emerald-500/50 hover:bg-zinc-800"
+            >
+              {backloggdCopyDone ? 'Copied!' : 'Copy text'}
+            </button>
+          </section>
+        ) : null}
       </div>
     </div>
   )

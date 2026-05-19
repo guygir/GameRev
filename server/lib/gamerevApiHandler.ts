@@ -313,7 +313,13 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
       if (out.ok === false) return { status: 422, body: { error: out.error } }
       return {
         status: 200,
-        body: { summary: out.summary, usedHeuristicFallback: out.usedHeuristicFallback },
+        body: {
+          summary: out.summary,
+          usedHeuristicFallback: out.usedHeuristicFallback,
+          stages: out.stages,
+          detectorConfigured: out.detectorConfigured,
+          detectorMode: out.detectorMode,
+        },
       }
     }
 
