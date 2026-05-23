@@ -1337,8 +1337,13 @@ export function AddGamePage() {
           ...(overrides?.backloggdSlug?.trim() ? { backloggdSlug: overrides.backloggdSlug.trim() } : {}),
         }),
       })
-      const json = (await res.json()) as EditorLookupBundleJson & { error?: string }
-      if (!res.ok) throw new Error(json.error ?? 'Lookup bundle failed')
+      let json: EditorLookupBundleJson & { error?: string }
+      try {
+        json = (await res.json()) as EditorLookupBundleJson & { error?: string }
+      } catch {
+        throw new Error(`Lookup bundle returned non-JSON (HTTP ${res.status}). Is the dev server running?`)
+      }
+      if (!res.ok) throw new Error(json.error ?? `Lookup bundle failed (HTTP ${res.status})`)
 
       if (json.igdb.ok) {
         setIgdbMatches(
@@ -1413,7 +1418,8 @@ export function AddGamePage() {
         return rl ?? prev
       })
     } catch (e) {
-      setEditorBundleErr(e instanceof Error ? e.message : 'Lookup bundle failed')
+      const msg = e instanceof Error ? e.message : 'Lookup bundle failed'
+      setEditorBundleErr(msg === 'Failed to fetch' ? 'Network error — is npm run dev running?' : msg)
     } finally {
       setEditorBundleBusy(false)
     }
@@ -1896,9 +1902,13 @@ export function AddGamePage() {
                 href={`https://backloggd.com/search/games/${encodeURIComponent(name.trim())}`}
                 target="_blank"
                 rel="noreferrer"
+                title="Backloggd often blocks server-side fetch; open the site in your browser instead."
               >
                 Open search in new tab
               </a>
+              <span className="text-[11px] text-zinc-500">
+                Manual fallback when Backloggd blocks automated fetch (common — they use bot protection).
+              </span>
             </div>
             {backloggdErr ? <p className="mt-2 text-xs text-rose-300">{backloggdErr}</p> : null}
             {backloggdData &&

@@ -129,16 +129,25 @@ export async function runEditorLookupBundle(
   })()
 
   const backloggdSlug = input.backloggdSlug?.trim() || undefined
-  const backloggdP = fetchBackloggdSuggestions(query, { env, geminiModel, backloggdSlug })
+  const backloggdP = (async (): Promise<EditorLookupBundleResponse['backloggd']> => {
+    try {
+      const out = await fetchBackloggdSuggestions(query, { env, geminiModel, backloggdSlug })
+      return out.ok === true ? { ok: true, data: out.data } : { ok: false, error: out.error }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Backloggd failed' }
+    }
+  })()
   const steamVisP = fetchSteamVisibility(query, releaseYear, {
     preferAppId: input.steamPreferAppId,
     preferSteamName: input.steamPreferSteamName?.trim() || undefined,
-  })
+    env,
+  }).catch((e) => ({
+    error: e instanceof Error ? e.message : 'Steam lookup failed',
+  }))
 
   const [igdb, backloggd, steamVis] = await Promise.all([igdbP, backloggdP, steamVisP])
 
-  const backloggdNorm: EditorLookupBundleResponse['backloggd'] =
-    backloggd.ok === true ? { ok: true, data: backloggd.data } : { ok: false, error: backloggd.error }
+  const backloggdNorm = backloggd
 
   let steam: EditorLookupBundleResponse['steam']
   if ('error' in steamVis) {
@@ -149,7 +158,7 @@ export async function runEditorLookupBundle(
 
     let suggestions: SteamReviewEditorSuggestions | null = null
     let suggestionsError: string | undefined
-    const bodiesRes = await fetchSteamReviewBodies(steamVis.appId)
+    const bodiesRes = await fetchSteamReviewBodies(steamVis.appId, env)
     if (bodiesRes.ok === false) {
       suggestionsError = bodiesRes.error
     } else if (bodiesRes.bodies.length === 0) {

@@ -45,10 +45,24 @@ async function fetchText(url: string): Promise<{ ok: true; text: string } | { ok
         'Accept-Language': 'en-US,en;q=0.9',
       },
     })
-    if (!res.ok) return { ok: false, error: `Backloggd HTTP ${res.status} for ${url}` }
+    if (!res.ok) {
+      const text = await res.text()
+      if (/bunny-shield|Establishing a secure connection|shield-challenge/i.test(text)) {
+        return {
+          ok: false,
+          error:
+            'Backloggd blocked this server request (Bunny Shield bot protection). Use “Open search in new tab” to browse Backloggd in your browser — automated fetch cannot pass their challenge.',
+        }
+      }
+      return { ok: false, error: `Backloggd HTTP ${res.status} for ${url}` }
+    }
     const text = await res.text()
-    if (/checking your browser|cf-browser-verification|challenge-platform/i.test(text)) {
-      return { ok: false, error: 'Backloggd returned a bot-check page; try again later or from another network.' }
+    if (/checking your browser|cf-browser-verification|challenge-platform|bunny-shield|Establishing a secure connection/i.test(text)) {
+      return {
+        ok: false,
+        error:
+          'Backloggd returned a bot-check page. Use “Open search in new tab” to browse manually — server-side fetch cannot pass their challenge.',
+      }
     }
     return { ok: true, text }
   } catch (e) {

@@ -178,6 +178,7 @@ export async function handleGamerevApi(input: GamerevApiHandlerInput): Promise<G
         appIdRaw && /^\d+$/.test(appIdRaw) ? parseInt(appIdRaw, 10) : undefined
       const preferSteamName = (searchParams.get('steamName') ?? '').trim() || undefined
       const out = await fetchSteamVisibility(q, releaseYear, {
+        env,
         ...(preferAppId != null && preferAppId > 0 ? { preferAppId, preferSteamName } : {}),
       })
       if ('error' in out) return { status: 422, body: { error: out.error } }

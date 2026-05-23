@@ -2,7 +2,27 @@
  * Minimal Steam Store (no API key): search + review totals for a popularity needle.
  */
 
+import { outboundFetch } from './outboundFetch.js'
+import type { ServerProcessEnv } from './serverEnv.js'
+
 const STEAM_UA = 'GameRev/1.0 (editorial; +https://github.com/guygir/GameRev)'
+
+function outboundFetchError(label: string, e: unknown, env?: ServerProcessEnv): string {
+  if (e instanceof Error) {
+    const cause = e.cause instanceof Error ? e.cause : null
+    const code = cause && 'code' in cause ? String((cause as { code?: string }).code) : ''
+    if (code === 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY' || /certificate/i.test(cause?.message ?? '')) {
+      const localhostFix =
+        env && !env.VERCEL
+          ? ' On localhost, add DEV_INSECURE_OUTBOUND_TLS=1 to .env and restart npm run dev (dev only).'
+          : ''
+      return `${label}: HTTPS certificate error (Node could not verify Steam’s cert).${localhostFix}`
+    }
+    if (e.message === 'fetch failed' && cause?.message) return `${label}: ${cause.message}`
+    return `${label}: ${e.message}`
+  }
+  return `${label}: fetch failed`
+}
 
 export type SteamVisibilityOk = {
   appId: number
@@ -70,20 +90,35 @@ export function computeVisibilityScore(totalReviews: number, releaseYear: number
 export async function steamStoreSearchHits(
   query: string,
   max = 15,
+  env: ServerProcessEnv = process.env,
 ): Promise<SteamStoreHit[] | { error: string }> {
   const q = query.trim()
   if (q.length < 2) return { error: 'Query too short.' }
   if (q.length > 120) return { error: 'Query too long.' }
 
   const searchUrl = `https://store.steampowered.com/search?term=${encodeURIComponent(q)}`
-  const searchRes = await fetch(searchUrl, {
-    headers: {
-      Accept: 'text/html,application/xhtml+xml',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'User-Agent': STEAM_UA,
-    },
-  })
-  if (!searchRes.ok) return { error: `Steam search HTTP ${searchRes.status}` }
+  let searchRes: Response
+  try {
+    searchRes = await outboundFetch(env, searchUrl, {
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': STEAM_UA,
+      },
+    })
+  } catch (e) {
+    return { error: outboundFetchError('Steam search', e, env) }
+  }
+  if (!searchRes.ok) {
+    const snippet = (await searchRes.text()).replace(/\s+/g, ' ').slice(0, 120)
+    if (searchRes.status === 403 && /opendns|block\.|access denied|forbidden/i.test(snippet)) {
+      return {
+        error:
+          'Steam search HTTP 403 — your network or DNS filter may be blocking store.steampowered.com (e.g. OpenDNS). Try another network or disable the filter for local dev.',
+      }
+    }
+    return { error: `Steam search HTTP ${searchRes.status}` }
+  }
   const html = await searchRes.text()
   const hits: SteamStoreHit[] = []
   const seen = new Set<number>()
@@ -109,13 +144,21 @@ type SteamReviewSnapshot = {
   reviewScorePercent: number | null
 }
 
-async function fetchSteamReviewSnapshot(appId: number): Promise<SteamReviewSnapshot | { error: string }> {
+async function fetchSteamReviewSnapshot(
+  appId: number,
+  env: ServerProcessEnv = process.env,
+): Promise<SteamReviewSnapshot | { error: string }> {
   const id = Math.floor(appId)
   if (!Number.isFinite(id) || id <= 0) return { error: 'Invalid Steam app id.' }
   const revUrl = `https://store.steampowered.com/appreviews/${id}?json=1&filter=all&language=all&purchase_type=all`
-  const revRes = await fetch(revUrl, {
-    headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
-  })
+  let revRes: Response
+  try {
+    revRes = await outboundFetch(env, revUrl, {
+      headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
+    })
+  } catch (e) {
+    return { error: outboundFetchError('Steam reviews', e, env) }
+  }
   if (!revRes.ok) return { error: `Steam reviews HTTP ${revRes.status}` }
   const revJson = (await revRes.json()) as {
     success?: number
@@ -141,6 +184,7 @@ async function fetchSteamReviewSnapshot(appId: number): Promise<SteamReviewSnaps
 
 async function fetchSteamStoreMetadata(
   appId: number,
+  env: ServerProcessEnv = process.env,
 ): Promise<{ developer: string | null; publisher: string | null; basePrice: string | null }> {
   const id = Math.floor(appId)
   if (!Number.isFinite(id) || id <= 0) {
@@ -148,7 +192,7 @@ async function fetchSteamStoreMetadata(
   }
   try {
     const url = `https://store.steampowered.com/api/appdetails?appids=${id}&cc=US&l=en`
-    const res = await fetch(url, {
+    const res = await outboundFetch(env, url, {
       headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
     })
     if (!res.ok) return { developer: null, publisher: null, basePrice: null }
@@ -200,6 +244,7 @@ export type SteamVisibilityOptions = {
   preferAppId?: number
   /** Display name when `preferAppId` is not in the search list (e.g. manual pick). */
   preferSteamName?: string
+  env?: ServerProcessEnv
 }
 
 export async function fetchSteamVisibility(
@@ -211,7 +256,8 @@ export async function fetchSteamVisibility(
   if (q.length < 2) return { error: 'Query too short.' }
   if (q.length > 120) return { error: 'Query too long.' }
 
-  const hitsRes = await steamStoreSearchHits(q, 15)
+  const env = opts?.env ?? process.env
+  const hitsRes = await steamStoreSearchHits(q, 15, env)
   if (!Array.isArray(hitsRes)) return hitsRes
 
   const preferId =
@@ -227,8 +273,8 @@ export async function fetchSteamVisibility(
   if (!selected) selected = hitsRes[0]!
 
   const [selectedReviews, selectedMeta] = await Promise.all([
-    fetchSteamReviewSnapshot(selected.appId),
-    fetchSteamStoreMetadata(selected.appId),
+    fetchSteamReviewSnapshot(selected.appId, env),
+    fetchSteamStoreMetadata(selected.appId, env),
   ])
   if ('error' in selectedReviews) return selectedReviews
 
@@ -237,8 +283,8 @@ export async function fetchSteamVisibility(
   const alternateHits = await Promise.all(
     alternateBaseHits.map(async (hit) => {
       const [reviews, meta] = await Promise.all([
-        fetchSteamReviewSnapshot(hit.appId).catch(() => null),
-        fetchSteamStoreMetadata(hit.appId),
+        fetchSteamReviewSnapshot(hit.appId, env).catch(() => null),
+        fetchSteamStoreMetadata(hit.appId, env),
       ])
       const reviewSnapshot = reviews && !('error' in reviews) ? reviews : null
       return {
@@ -268,14 +314,20 @@ export async function fetchSteamVisibility(
  */
 export async function fetchSteamReviewBodies(
   appId: number,
+  env: ServerProcessEnv = process.env,
 ): Promise<{ ok: true; bodies: string[] } | { ok: false; error: string }> {
   const id = Math.floor(appId)
   if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'Invalid Steam app id.' }
 
   const url = `https://store.steampowered.com/appreviews/${id}?json=1&filter=all&language=english&review_type=all&purchase_type=all&num_per_page=30`
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
-  })
+  let res: Response
+  try {
+    res = await outboundFetch(env, url, {
+      headers: { Accept: 'application/json', 'User-Agent': STEAM_UA },
+    })
+  } catch (e) {
+    return { ok: false, error: outboundFetchError('Steam reviews', e, env) }
+  }
   if (!res.ok) return { ok: false, error: `Steam reviews HTTP ${res.status}` }
   let json: { success?: number; reviews?: { review?: string }[] }
   try {
