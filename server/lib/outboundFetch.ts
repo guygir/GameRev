@@ -18,11 +18,14 @@ export async function outboundFetch(
 ): Promise<Response> {
   if (!allowInsecureTls(env)) return fetch(url, init)
 
-  const undici = await import('undici')
+  const { fetch: undiciFetch, Agent } = await import('undici')
   if (!insecureDispatcher) {
-    insecureDispatcher = new undici.Agent({ connect: { rejectUnauthorized: false } })
+    insecureDispatcher = new Agent({ connect: { rejectUnauthorized: false } })
   }
-  return undici.fetch(url, { ...init, dispatcher: insecureDispatcher }) as unknown as Response
+  // Global FetchInit and undici RequestInit diverge under @types/node (duplicate undici-types).
+  type UndiciRequestInit = NonNullable<Parameters<typeof undiciFetch>[1]>
+  const undiciInit = { ...init, dispatcher: insecureDispatcher } as UndiciRequestInit
+  return undiciFetch(url, undiciInit) as unknown as Response
 }
 
 export function isDevInsecureTlsEnabled(env: ServerProcessEnv): boolean {
