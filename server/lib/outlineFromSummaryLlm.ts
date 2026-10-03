@@ -1,4 +1,4 @@
-import { geminiModelsToTry } from './backloggdLlmRefine.js'
+import { geminiJsonGenerationConfig, geminiModelsToTry } from './backloggdLlmRefine.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 import { statAxes, statAxisTooltips, type GameStatAxis } from '../../src/review/gameStats.js'
 
@@ -161,11 +161,10 @@ async function outlineGemini(key: string, models: string[], prompt: string): Pro
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
+            generationConfig: geminiJsonGenerationConfig(model, {
               temperature: 0.3,
               maxOutputTokens: 2048,
-              responseMimeType: 'application/json',
-            },
+            }),
           }),
         })
         const rawText = await res.text()

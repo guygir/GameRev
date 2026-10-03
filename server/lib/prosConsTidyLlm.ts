@@ -1,4 +1,4 @@
-import { geminiModelsToTry } from './backloggdLlmRefine.js'
+import { geminiJsonGenerationConfig, geminiModelsToTry } from './backloggdLlmRefine.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
@@ -145,11 +145,10 @@ async function tidyGemini(key: string, models: string[], prompt: string): Promis
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
+            generationConfig: geminiJsonGenerationConfig(model, {
               temperature: 0.3,
               maxOutputTokens: 2000,
-              responseMimeType: 'application/json',
-            },
+            }),
           }),
         })
         const rawText = await res.text()

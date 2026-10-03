@@ -1,4 +1,4 @@
-import { geminiModelsToTry } from './backloggdLlmRefine.js'
+import { geminiJsonGenerationConfig, geminiModelsToTry } from './backloggdLlmRefine.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 import {
   hasLlmAiDetector,
@@ -348,11 +348,10 @@ async function editorNoteGemini(key: string, models: string[], prompt: string): 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
+            generationConfig: geminiJsonGenerationConfig(model, {
               temperature: 0.55,
               maxOutputTokens,
-              responseMimeType: 'application/json',
-            },
+            }),
           }),
         })
         const rawText = await res.text()
@@ -458,11 +457,10 @@ async function summarizeGemini(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
+            generationConfig: geminiJsonGenerationConfig(model, {
               temperature: callOpts?.temperature ?? 0.35,
               maxOutputTokens,
-              responseMimeType: 'application/json',
-            },
+            }),
           }),
         })
         const rawText = await res.text()
