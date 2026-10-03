@@ -1,11 +1,16 @@
 const HLTB_BASE_URL = 'https://howlongtobeat.com'
 const HLTB_IMAGE_URL = `${HLTB_BASE_URL}/games/`
 
-type HltbBleedInit = {
+type HltbSearchInit = {
   token?: unknown
-  hpKey?: unknown
-  hpVal?: unknown
 }
+
+type HltbFilter = {
+  mode: 'include'
+  values: string[]
+}
+
+const emptyFilter = (): HltbFilter => ({ mode: 'include', values: [] })
 
 type HltbBleedGame = {
   game_id?: unknown
@@ -96,17 +101,15 @@ async function hltbJson<T>(url: string, init: RequestInit): Promise<T> {
 }
 
 async function searchOnce(query: string, signal?: AbortSignal): Promise<HltbSearchHit[]> {
-  const init = await hltbJson<HltbBleedInit>(`${HLTB_BASE_URL}/api/bleed/init?t=${Date.now()}`, {
+  const init = await hltbJson<HltbSearchInit>(`${HLTB_BASE_URL}/api/search/site/init?t=${Date.now()}`, {
     headers: browserHeaders(),
     signal,
   })
   const token = typeof init.token === 'string' ? init.token : ''
-  const hpKey = typeof init.hpKey === 'string' ? init.hpKey : ''
-  const hpVal = typeof init.hpVal === 'string' ? init.hpVal : ''
   if (!token) throw new Error('HowLongToBeat did not return a search token.')
 
   const searchTerms = query.trim().split(/\s+/).filter(Boolean)
-  const payload: Record<string, unknown> = {
+  const payload = {
     searchType: 'games',
     searchTerms,
     searchPage: 1,
@@ -114,12 +117,16 @@ async function searchOnce(query: string, signal?: AbortSignal): Promise<HltbSear
     searchOptions: {
       games: {
         userId: 0,
-        platform: '',
+        platform: emptyFilter(),
         sortCategory: 'popular',
         rangeCategory: 'main',
         rangeTime: { min: null, max: null },
-        gameplay: { perspective: '', flow: '', genre: '', difficulty: '' },
-        rangeYear: { min: '', max: '' },
+        gameplay: {
+          perspective: emptyFilter(),
+          flow: emptyFilter(),
+          genre: emptyFilter(),
+        },
+        year: emptyFilter(),
         modifier: '',
       },
       users: { sortCategory: 'postcount' },
@@ -130,17 +137,14 @@ async function searchOnce(query: string, signal?: AbortSignal): Promise<HltbSear
     },
     useCache: true,
   }
-  if (hpKey && hpVal) payload[hpKey] = hpVal
 
-  const response = await hltbJson<HltbBleedResponse>(`${HLTB_BASE_URL}/api/bleed`, {
+  const response = await hltbJson<HltbBleedResponse>(`${HLTB_BASE_URL}/api/search/site`, {
     method: 'POST',
     headers: {
       ...browserHeaders(`${HLTB_BASE_URL}/?q=${encodeURIComponent(query)}`),
       'content-type': 'application/json',
       origin: HLTB_BASE_URL,
       'x-auth-token': token,
-      ...(hpKey ? { 'x-hp-key': hpKey } : {}),
-      ...(hpVal ? { 'x-hp-val': hpVal } : {}),
     },
     body: JSON.stringify(payload),
     signal,
