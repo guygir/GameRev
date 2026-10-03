@@ -1875,8 +1875,7 @@ export function AddGamePage() {
                 ))}
               </select>
               <span className="mt-1 block text-[11px] leading-relaxed text-zinc-500">
-                Only free-tier Flash / Flash-Lite IDs. OpenAI is tried first when configured; this order applies when the
-                request uses Gemini. See{' '}
+                OpenAI is tried first when configured; this order applies when the request uses Gemini. See{' '}
                 <a
                   className="text-amber-300/90 underline-offset-2 hover:underline"
                   href="https://ai.google.dev/pricing"

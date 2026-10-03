@@ -1,4 +1,4 @@
-import { geminiModelsToTry } from './backloggdLlmRefine.js'
+import { geminiJsonGenerationConfig, geminiModelsToTry } from './backloggdLlmRefine.js'
 import type { ServerProcessEnv } from './serverEnv.js'
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
@@ -6,7 +6,7 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const GROQ_MODEL = 'llama-3.1-8b-instant'
 
 /** Fast, quota-friendly models for detection-only calls. */
-const DETECTOR_GEMINI_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.0-flash'] as const
+const DETECTOR_GEMINI_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'] as const
 
 export type AiDetectorLlmScore = {
   aiLikelihood: number
@@ -156,11 +156,10 @@ async function callGeminiDetector(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
+          generationConfig: geminiJsonGenerationConfig(model, {
             temperature: 0.15,
             maxOutputTokens,
-            responseMimeType: 'application/json',
-          },
+          }),
         }),
       })
       const raw = await res.text()
@@ -289,11 +288,10 @@ async function scoreBatchWithGemini(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: `${DETECTOR_SYSTEM}\n\n${prompt}` }] }],
-          generationConfig: {
+          generationConfig: geminiJsonGenerationConfig(model, {
             temperature: 0.15,
             maxOutputTokens: 1024,
-            responseMimeType: 'application/json',
-          },
+          }),
         }),
       })
       const raw = await res.text()
